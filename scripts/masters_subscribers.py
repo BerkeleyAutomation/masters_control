@@ -29,7 +29,6 @@ class MastersSubscriber():
                          Bool, self.__clutch_callback)
         self.pub = rospy.Publisher('/' + name + '_deltas/position_cartesian_current', Pose, queue_size=10)
 
-
     def __position_cartesian_current_callback(self, msg):
         if rospy.is_shutdown():
             return
