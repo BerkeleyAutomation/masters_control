@@ -13,6 +13,7 @@ def transform_publisher(name, transform):
     rospy.init_node('transform_publisher', anonymous=True)
     rate = rospy.Rate(10) # 10hz
     while not rospy.is_shutdown():
+        rospy.loginfo("Publishing: {0}".format(transform))
         pub.publish(transform)
         rate.sleep()
 
