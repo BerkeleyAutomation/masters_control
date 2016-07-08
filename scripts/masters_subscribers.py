@@ -8,7 +8,7 @@ from geometry_msgs.msg import Pose
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Point
 
-class MastersSubscriber():
+class MastersSubscriber:
 
     def __init__(self, name):
 
@@ -17,8 +17,6 @@ class MastersSubscriber():
         self.clutch_state = False
         self.current = None
         self.pose_rel = None
-
-        self.scaling_factor = 1
 
         full_ros_namespace = "/dvrk/" + name
         rospy.init_node('master_deltas',anonymous=True)
@@ -52,7 +50,6 @@ class MastersSubscriber():
             self.pub_del.publish(delta_pose)
 
             self.pose_rel = self.current + self.offset
-            self.pose_rel[:3] *= self.scaling_factor
             rel_pose = self._array_to_pose(self.pose_rel)
             self.pub_rel.publish(rel_pose)
 
