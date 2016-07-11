@@ -41,13 +41,13 @@ class YuMiClient:
     _LEFT_REL_TOPIC = '/MTML_YuMi/position_cartesian_current_rel'
     _RIGHT_REL_TOPIC = '/MTMR_YuMi/position_cartesian_current_rel'
 
-    _MASTERS_TO_YUMI = tfx.transform([[0,-1,0,0],
-                                      [1,0,0,0],
+    _MASTERS_TO_YUMI = tfx.transform([[0,1,0,0],
+                                      [-1,0,0,0],
                                       [0,0,1,0],
                                       [0,0,0,1]])
 
-    _MASTERS_TO_YUMI_SCALE = 0.5
-    _POSE_DIFF_THRESHOLD = 5 # this is in mm
+    _MASTERS_TO_YUMI_SCALE = 1
+    _POSE_DIFF_THRESHOLD = 1 # this is in mm
 
     #TODO: Test and set this value
     _ROT_MAG_SCALE = 0
@@ -55,24 +55,25 @@ class YuMiClient:
     def __init__(self, ip=YMC.IP, port_l=YMC.PORT_L, port_r=YMC.PORT_R, tcp=YMC.TCP_DEFAULT_GRIPER):
         rospy.init_node('yumi_client', anonymous=True)
         self.yumi = YuMiRobot(ip, port_l, port_r, tcp)
-        sleep(1)
-        self.yumi.set_z('z200')
+        self.yumi.set_z('z1')
         self.yumi.set_v(1500)
         self.yumi.reset_home()
-        sleep(1)
-
+        sleep(2)
         self.start_pose = {
             'left': self.yumi.left.get_pose(),
             'right': self.yumi.right.get_pose()
         }
         self.last_pose = {
-            'left': self.yumi.left.get_pose(),
-            'right': self.yumi.right.get_pose()
+            'left': self.start_pose['left'],
+            'right': self.start_pose['right']
         }
         self.rate_limiter = {
             'left': _RateLimiter(YMC.COMM_PERIOD),
             'right': _RateLimiter(YMC.COMM_PERIOD)
         }
+
+        self.left_time = time()
+        self.left_count = 0
 
     def start(self):
         rospy.Subscriber(YuMiClient._LEFT_REL_TOPIC, Pose, self.left_call_back)
@@ -89,7 +90,6 @@ class YuMiClient:
     def _close_enough(pose1, pose2):
         tf1 = pose1.as_tf()
         tf2 = pose2.as_tf()
-
         delta_tf = tf1.inverse() * tf2
 
         diff = delta_tf.position.norm + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_tf.rotation.matrix)
@@ -128,11 +128,22 @@ class YuMiClient:
 
         # TODO: hack to only use position data for now
         yumi_pose.rotation = yumi_start_pose.rotation
+        yumi_pose.position = yumi_start_pose.position + yumi_rel_pose.position
         
         # send pose to YuMi
         start = time()
         arm.goto_pose(yumi_pose, wait_for_res=True)
         end = time()
+
+        self.left_count += 1
+        if arm_name == 'left':
+            cur = time()
+            period = cur - self.left_time
+            if period > 1:
+                print "Sent {0} msgs in {1}s. About {2}hz".format(self.left_count, period, self.left_count /1./ period)
+                self.left_count = 0
+                self.left_time = time()
+
         return end-start
 
     def left_call_back(self, ros_pose):
@@ -140,13 +151,23 @@ class YuMiClient:
         motion_time = self._update_yumi('left', ros_pose)
         total_time = time() - start
         if motion_time is not None:
+            return
+            print 'LEFT'
             print 'callback took {0}s'.format(total_time)
             print "cmd took {0}s".format(motion_time)
             print 'diff is {0}s'.format(total_time - motion_time)
 
     def right_call_back(self, ros_pose):
-        #self._update_yumi('right', ros_pose)
-        return
+        start = time()
+        motion_time = self._update_yumi('right', ros_pose)
+        total_time = time() - start
+        if motion_time is not None:
+            return
+            print 'RIGHT'
+            print 'callback took {0}s'.format(total_time)
+            print "cmd took {0}s".format(motion_time)
+            print 'diff is {0}s'.format(total_time - motion_time)
+
 
 if __name__ == '__main__':
     logging.getLogger().setLevel(YMC.LOGGING_LEVEL)

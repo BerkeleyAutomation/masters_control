@@ -19,14 +19,19 @@ class MastersSubscriber:
         self.pose_rel = None
 
         full_ros_namespace = "/dvrk/" + name
+        rospy.loginfo("Initializing node")
         rospy.init_node('master_deltas',anonymous=True)
         # subscribers
+        rospy.loginfo("Subscribing to position_cartesian_current for {0}".format(name))
         rospy.Subscriber(full_ros_namespace + '/position_cartesian_current',
                          Pose, self.__position_cartesian_current_callback)
+        rospy.loginfo("Subscribing to clutch for {0}".format(name))
         rospy.Subscriber('/dvrk/footpedals/clutch',
                          Bool, self.__clutch_callback)
-        self.pub_rel = rospy.Publisher('/{0}_YuMi/position_cartesian_current_rel'.format(name), Pose, queue_size=10)
-        self.pub_del = rospy.Publisher('/{0}_YuMi/position_cartesian_current_delta'.format(name), Pose, queue_size=10)
+        rospy.loginfo("Publishing relative position_cartesian_current for {0}".format(name))
+        self.pub_rel = rospy.Publisher('/{0}_YuMi/position_cartesian_current_rel'.format(name), Pose, queue_size=1)
+        rospy.loginfo("Publishing delta position_cartesian_current for {0}".format(name))
+        self.pub_del = rospy.Publisher('/{0}_YuMi/position_cartesian_current_delta'.format(name), Pose, queue_size=1)
 
     def _array_to_pose(self, ary):
         point = Point(ary[0], ary[1], ary[2])
