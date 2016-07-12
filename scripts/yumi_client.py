@@ -4,6 +4,7 @@ Script to command YuMi by listening to dvrk masters
 Author: Jacky
 '''
 import logging
+import sys
 import rospy
 import numpy as np
 import tfx
@@ -36,8 +37,6 @@ class _RateLimiter:
 
 class YuMiClient:
 
-    _LEFT_DEL_TOPIC = '/MTML_YuMi/position_cartesian_current_delta'
-    _RIGHT_DEL_TOPIC = '/MTMR_YuMi/position_cartesian_current_delta'
     _LEFT_REL_TOPIC = '/MTML_YuMi/position_cartesian_current_rel'
     _RIGHT_REL_TOPIC = '/MTMR_YuMi/position_cartesian_current_rel'
 
@@ -71,13 +70,21 @@ class YuMiClient:
             'left': _RateLimiter(YMC.COMM_PERIOD),
             'right': _RateLimiter(YMC.COMM_PERIOD)
         }
-
         self.left_time = time()
         self.left_count = 0
 
+    def _shutdown_hook_gen(self):
+        def shutdown_hook():
+            rospy.loginfo("Shutting down yumi client..")
+            self.yumi.stop()
+            self._left_sub.unregister()
+            self._right_sub.unregister()
+        return shutdown_hook
+
     def start(self):
-        rospy.Subscriber(YuMiClient._LEFT_REL_TOPIC, Pose, self.left_call_back)
-        rospy.Subscriber(YuMiClient._RIGHT_REL_TOPIC, Pose, self.right_call_back)
+        self._left_sub = rospy.Subscriber(YuMiClient._LEFT_REL_TOPIC, Pose, self.left_call_back)
+        self._right_sub = rospy.Subscriber(YuMiClient._RIGHT_REL_TOPIC, Pose, self.right_call_back)
+        rospy.on_shutdown(self._shutdown_hook_gen())
         rospy.spin()
 
     @staticmethod
