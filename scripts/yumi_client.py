@@ -7,12 +7,12 @@ import logging
 import sys
 import rospy
 import numpy as np
-import tfx
 from geometry_msgs.msg import Pose
 from time import sleep, time
 
 from alan.control.YuMiConstants import YuMiConstants as YMC
 from alan.control.YuMiRobot import YuMiRobot
+from alan.core import RigidTransform
 from alan.constants import METERS_TO_MM
 
 import IPython
@@ -40,10 +40,10 @@ class YuMiClient:
     _LEFT_REL_TOPIC = '/MTML_YuMi/position_cartesian_current_rel'
     _RIGHT_REL_TOPIC = '/MTMR_YuMi/position_cartesian_current_rel'
 
-    _MASTERS_TO_YUMI = tfx.transform([[0,1,0,0],
-                                      [-1,0,0,0],
-                                      [0,0,1,0],
-                                      [0,0,0,1]])
+    _MASTERS_TO_YUMI = RigidTransform(rotation=[[0,1,0],
+                                                [-1,0,0],
+                                                [0,0,1]],
+                                      from_frame='masters_init', to_frame='yumi_init')
 
     _MASTERS_TO_YUMI_SCALE = 1
     _POSE_DIFF_THRESHOLD = 1 # this is in mm
@@ -55,16 +55,16 @@ class YuMiClient:
         rospy.init_node('yumi_client', anonymous=True)
         self.yumi = YuMiRobot(ip, port_l, port_r, tcp)
         self.yumi.set_z('z1')
-        self.yumi.set_v(1500)
+        self.yumi.set_v(200)
         self.yumi.reset_home()
         sleep(2)
-        self.start_pose = {
-            'left': self.yumi.left.get_pose(),
-            'right': self.yumi.right.get_pose()
+        self.init_pose = {
+            'left': RigidTransform(translation=self.yumi.left.get_pose().translation, from_frame='yumi_init', to_frame='world'),
+            'right': RigidTransform(translation=self.yumi.right.get_pose().translation, from_frame='yumi_init', to_frame='world')
         }
         self.last_pose = {
-            'left': self.start_pose['left'],
-            'right': self.start_pose['right']
+            'left': self.init_pose['left'],
+            'right': self.init_pose['right']
         }
         self.rate_limiter = {
             'left': _RateLimiter(YMC.COMM_PERIOD),
@@ -88,18 +88,17 @@ class YuMiClient:
         rospy.spin()
 
     @staticmethod
-    def _ros_to_tfx_pose(ros_pose):
-        position = [ros_pose.position.x, ros_pose.position.y, ros_pose.position.z]
-        rotation = [ros_pose.orientation.x, ros_pose.orientation.y, ros_pose.orientation.z, ros_pose.orientation.w]
-        return tfx.pose(position, rotation)
+    def _ros_to_rigid_transform(ros_pose):
+        translation = np.array([ros_pose.position.x, ros_pose.position.y, ros_pose.position.z])
+        rotation = np.array([ros_pose.orientation.w, ros_pose.orientation.x, ros_pose.orientation.y, ros_pose.orientation.z])
+        normed_rotation = rotation / np.linalg.norm(rotation)
+        return RigidTransform(translation=translation, rotation=normed_rotation, from_frame='yumi', to_frame='masters_init')
 
     @staticmethod
     def _close_enough(pose1, pose2):
-        tf1 = pose1.as_tf()
-        tf2 = pose2.as_tf()
-        delta_tf = tf1.inverse() * tf2
+        delta_rtf = pose1.inverse() * pose2
 
-        diff = delta_tf.position.norm + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_tf.rotation.matrix)
+        diff = np.linalg.norm(delta_rtf.translation) + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_rtf.rotation)
         if diff < YuMiClient._POSE_DIFF_THRESHOLD:
             return True
         return False
@@ -110,32 +109,26 @@ class YuMiClient:
             return
 
         arm = getattr(self.yumi, arm_name)
-        yumi_start_pose = self.start_pose[arm_name]
+        yumi_init_pose = self.init_pose[arm_name]
 
-        # turn ros pose into tfx pose 
-        masters_pose = YuMiClient._ros_to_tfx_pose(ros_pose)
+        # turn ros pose into rtf
+        masters_rel_pose = YuMiClient._ros_to_rigid_transform(ros_pose)
         
-        # meters to mm
-        masters_pose.position = masters_pose.position * METERS_TO_MM
-        
-        # scale translations
-        masters_pose.position = masters_pose.position * YuMiClient._MASTERS_TO_YUMI_SCALE    
+        # meters to mm, and scale translations
+        masters_rel_pose.position = masters_rel_pose.position * METERS_TO_MM
+        masters_rel_pose.position = masters_rel_pose.position * YuMiClient._MASTERS_TO_YUMI_SCALE
 
         # transform into YuMi basis
-        yumi_rel_pose = YuMiClient._MASTERS_TO_YUMI * masters_pose
-        
-        # offset using starting pose
-        yumi_pose = yumi_start_pose.as_tf() * yumi_rel_pose
+        yumi_rel_pose = YuMiClient._MASTERS_TO_YUMI * masters_rel_pose
+
+        # offset using init pose
+        yumi_pose = yumi_init_pose * yumi_rel_pose
 
         if YuMiClient._close_enough(yumi_pose, self.last_pose[arm_name]):
             return
 
         # updating last pose
         self.last_pose[arm_name] = yumi_pose
-
-        # TODO: hack to only use position data for now
-        yumi_pose.rotation = yumi_start_pose.rotation
-        yumi_pose.position = yumi_start_pose.position + yumi_rel_pose.position
         
         # send pose to YuMi
         start = time()
@@ -154,6 +147,7 @@ class YuMiClient:
         return end-start
 
     def left_call_back(self, ros_pose):
+        return
         start = time()
         motion_time = self._update_yumi('left', ros_pose)
         total_time = time() - start
