@@ -14,7 +14,6 @@ from time import sleep, time
 from alan.control import YuMiConstants as YMC
 from alan.control import YuMiRobot
 from alan.core import RigidTransform
-from alan.constants import METERS_TO_MM
 
 import IPython
 
@@ -127,8 +126,7 @@ class YuMiClient:
         # turn ros pose into rtf
         rtf_mi_mc = YuMiClient._ros_to_rigid_transform(ros_pose, 'masters_current', 'masters_init')
         
-        # meters to mm, and scale translations
-        rtf_mi_mc.position = rtf_mi_mc.position * METERS_TO_MM
+        # scale translations
         rtf_mi_mc.position = rtf_mi_mc.position * YuMiClient._MASTERS_TO_YUMI_SCALE
 
         # transform into YuMi basis
