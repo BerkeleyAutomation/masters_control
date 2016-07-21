@@ -12,7 +12,7 @@ def talker(topic_name):
     origin_pose = Pose(Point(0,0,0), Quaternion(0,0,0,1))
     test_pose = Pose(Point(1,0,0), Quaternion(0,0,0,1))
     
-    hz = 10
+    hz = 2
     rate = rospy.Rate(hz)
     
     print 'publishing to {0}'.format(topic_name)
@@ -20,7 +20,7 @@ def talker(topic_name):
     
     val = 0
     while not rospy.is_shutdown():
-        test_pose = Pose(Point(0,0,val), Quaternion(0,0,0,1))
+        test_pose = Pose(Point(0,val,0), Quaternion(0,0,0,1))
         pub.publish(test_pose)
         rate.sleep()
         val += 0.001

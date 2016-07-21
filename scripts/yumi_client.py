@@ -71,8 +71,10 @@ class YuMiClient:
             'right': self.yumi.right.get_pose().as_frames('yumi_init', 'world')
         }
         self.rtf_yi_yr = {
-            'left': RigidTransform(rotation=self.init_pose['left'].inverse().rotation, from_frame='yumi_reference', to_frame='yumi_init'),
-            'right': RigidTransform(rotation=self.init_pose['right'].inverse().rotation, from_frame='yumi_reference', to_frame='yumi_init')
+            'left': RigidTransform(rotation=self.init_pose['left'].inverse().rotation, 
+                                    from_frame='yumi_reference', to_frame='yumi_init'),
+            'right': RigidTransform(rotation=self.init_pose['right'].inverse().rotation, 
+                                    from_frame='yumi_reference', to_frame='yumi_init')
         }
         self.last_pose = {
             'left': self.init_pose['left'].copy(),
@@ -150,7 +152,8 @@ class YuMiClient:
         # send pose to YuMi
         start = time()
         print rtf_w_yc.translation
-        getattr(self.yumi, arm_name).goto_pose(rtf_w_yc, wait_for_res=True)
+        print rtf_w_yc.quaternion
+        getattr(self.yumi, arm_name).goto_pose(rtf_w_yc)
         end = time()
 
         self.left_count += 1
