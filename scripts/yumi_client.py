@@ -15,8 +15,6 @@ from alan.control import YuMiConstants as YMC
 from alan.control import YuMiRobot
 from alan.core import RigidTransform
 
-import IPython
-
 class _RateLimiter:
 
     def __init__(self, period):
@@ -45,35 +43,40 @@ class YuMiClient:
     _R_GRIPPER_POSITION  = '/dvrk/MTMR/gripper_position_current'
 
     _RTF_MC_YC = RigidTransform(rotation=[[0,-1,0],
-                                          [1,0,0],
-                                          [0,0,1]],
+                                                                [1,0,0],
+                                                                [0,0,1]],
                                 from_frame='yumi_current', to_frame='masters_current')
     
-    _RTF_YI_MI = RigidTransform(rotation=[[0,1,0],
+    _RTF_YR_MI = RigidTransform(rotation=[[0,1,0],
                                           [-1,0,0],
                                           [0,0,1]],
-                                from_frame='masters_init', to_frame='yumi_init')
+                                from_frame='masters_init', to_frame='yumi_reference')
 
     _MASTERS_TO_YUMI_SCALE = 1
-    _POSE_DIFF_THRESHOLD = 1 # this is in mm
+    _POSE_DIFF_THRESHOLD = 0.001 # this is in m
 
     #TODO: Test and set this value
     _ROT_MAG_SCALE = 0
 
-    def __init__(self, ip=YMC.IP, port_l=YMC.PORT_L, port_r=YMC.PORT_R, tcp=YMC.TCP_DEFAULT_GRIPER):
+    def __init__(self, ip=YMC.IP, port_l=YMC.PORT_L, port_r=YMC.PORT_R, tcp=YMC.TCP_DEFAULT_GRIPPER):
         rospy.init_node('yumi_client', anonymous=True)
         self.yumi = YuMiRobot(ip, port_l, port_r, tcp)
         self.yumi.set_z('fine')
         self.yumi.set_v(200)
         self.yumi.reset_home()
         self.yumi.set_z('z1')
+        sleep(1)
         self.init_pose = {
             'left': self.yumi.left.get_pose().as_frames('yumi_init', 'world'),
             'right': self.yumi.right.get_pose().as_frames('yumi_init', 'world')
         }
+        self.rtf_yi_yr = {
+            'left': RigidTransform(rotation=self.init_pose['left'].inverse().rotation, from_frame='yumi_reference', to_frame='yumi_init'),
+            'right': RigidTransform(rotation=self.init_pose['right'].inverse().rotation, from_frame='yumi_reference', to_frame='yumi_init')
+        }
         self.last_pose = {
-            'left': self.init_pose['left'],
-            'right': self.init_pose['right']
+            'left': self.init_pose['left'].copy(),
+            'right': self.init_pose['right'].copy()
         }
         self.rate_limiter = {
             'left': _RateLimiter(YMC.COMM_PERIOD),
@@ -86,12 +89,15 @@ class YuMiClient:
         def shutdown_hook():
             rospy.loginfo("Shutting down yumi client..")
             self.yumi.stop()
-            self._l_motion_sub.unregister()
+            self._l_gripper_sub.unregister()
+            self._r_gripper_sub.unregister()
             self._r_motion_sub.unregister()
+            self._l_motion_sub.unregister()
+            
         return shutdown_hook
 
     def start(self):
-        # self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
+        self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
         self._r_motion_sub = rospy.Subscriber(YuMiClient._R_REL, Pose, self._motion_callback_gen('right'))
         self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber(YuMiClient._R_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('right'))
@@ -120,7 +126,7 @@ class YuMiClient:
         if not rate_limiter.ok:
             return
 
-        arm = getattr(self.yumi, arm_name)
+        #arm = getattr(self.yumi, arm_name)
         rtf_w_yi = self.init_pose[arm_name]
 
         # turn ros pose into rtf
@@ -130,10 +136,10 @@ class YuMiClient:
         rtf_mi_mc.position = rtf_mi_mc.position * YuMiClient._MASTERS_TO_YUMI_SCALE
 
         # transform into YuMi basis
-        rtf_yi_yc = YuMiClient._RTF_YI_MI * rtf_mi_mc * YuMiClient._RTF_MC_YC
+        rtf_yr_yc = YuMiClient._RTF_YR_MI * rtf_mi_mc * YuMiClient._RTF_MC_YC
 
         # offset using init pose
-        rtf_w_yc = rtf_w_yi * rtf_yi_yc
+        rtf_w_yc = rtf_w_yi * self.rtf_yi_yr[arm_name] * rtf_yr_yc
 
         if YuMiClient._close_enough(rtf_w_yc, self.last_pose[arm_name]):
             return
@@ -143,7 +149,8 @@ class YuMiClient:
         
         # send pose to YuMi
         start = time()
-        arm.goto_pose(rtf_w_yc, wait_for_res=True)
+        print rtf_w_yc.translation
+        getattr(self.yumi, arm_name).goto_pose(rtf_w_yc, wait_for_res=True)
         end = time()
 
         self.left_count += 1

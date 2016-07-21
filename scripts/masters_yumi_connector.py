@@ -25,7 +25,7 @@ class MastersYuMiConnector:
         
         # subscribers
         rospy.loginfo("Subscribing to position_cartesian_current for {0}".format(name))
-        rospy.Subscriber(full_ros_namespace + '/position_cartesian_current',
+        rospy.Subscriber('{0}/position_cartesian_current'.format(full_ros_namespace),
                          Pose, self._position_cartesian_current_callback)
         
         rospy.loginfo("Subscribing to clutch for {0}".format(name))
@@ -54,7 +54,7 @@ class MastersYuMiConnector:
     def _position_cartesian_current_callback(self, ros_pose):
         if rospy.is_shutdown():
             return
-
+            
         self.rtf_w_mc = self._ros_pose_to_rtf(ros_pose, 'masters_current', 'world')
 
         # initialize rtf_w_cu_t to the pose the masters started off with
@@ -66,6 +66,7 @@ class MastersYuMiConnector:
             rtf_mr_mc = self.rtf_mr_cu_t * self.rtf_w_cu_t.inverse() * self.rtf_w_mc
 
             pose_mr_mc = self._rtf_to_ros_pose(rtf_mr_mc)
+            print pose_mr_mc
             self.pub_rel.publish(pose_mr_mc)
 
     def _clutch_callback(self, msg):
@@ -90,6 +91,6 @@ class MastersYuMiConnector:
         self.clutch_state = cluch_down
 
 if __name__ == "__main__":
-    #left = MastersYuMiConnector("MTML")
+    left = MastersYuMiConnector("MTML")
     right = MastersYuMiConnector("MTMR")
     rospy.spin()
