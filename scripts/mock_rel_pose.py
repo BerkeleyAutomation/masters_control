@@ -12,7 +12,7 @@ def talker(topic_name):
     origin_pose = Pose(Point(0,0,0), Quaternion(0,0,0,1))
     test_pose = Pose(Point(1,0,0), Quaternion(0,0,0,1))
     
-    hz = 3
+    hz = 30
     rate = rospy.Rate(hz)
     
     print 'publishing to {0}'.format(topic_name)
@@ -20,7 +20,7 @@ def talker(topic_name):
     
     val = 0
     while not rospy.is_shutdown():
-        test_pose = Pose(Point(0,val,0), Quaternion(0,0,0,1))
+        test_pose = Pose(Point(val,0,0), Quaternion(0,0,0,1))
 
         print 'snt: ', [test_pose.position.x, test_pose.position.y, test_pose.position.z]
         pub.publish(test_pose)
@@ -29,8 +29,8 @@ def talker(topic_name):
 
 if __name__ == '__main__':
     side = 'MTMR'
-    topic_name = '/dvrk/{0}/position_cartesian_current_mock'.format(side)
-    # topic_name = '/{0}_YuMi/position_cartesian_current_rel'.format(side)
+    # topic_name = '/dvrk/{0}/position_cartesian_current_mock'.format(side)
+    topic_name = '/{0}_YuMi/position_cartesian_current_rel'.format(side)
     try:
         talker(topic_name)
     except rospy.ROSInterruptException:

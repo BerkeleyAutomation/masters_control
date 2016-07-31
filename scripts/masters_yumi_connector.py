@@ -75,7 +75,8 @@ class MastersYuMiConnector:
             self.has_clutched_up = True
             self._clutch_callback(Bool(False))
         '''
-        
+
+        print "got: ", [ros_pose.position.x, ros_pose.position.y, ros_pose.position.z]
         self.T_w_mc = self._ros_pose_to_T(ros_pose, 'masters_current', 'world')
 
         # initialize T_w_cu_t to the pose the masters started off with
@@ -95,6 +96,7 @@ class MastersYuMiConnector:
 
             pose_mzr_mcr = self._T_to_ros_pose(T_mzr_mcr)
 
+            print 'snt: ', [pose_mzr_mcr.position.x, pose_mzr_mcr.position.y, pose_mzr_mcr.position.z]
             self.pub_rel.publish(pose_mzr_mcr)
 
     def _clutch_callback(self, msg):
@@ -116,14 +118,10 @@ class MastersYuMiConnector:
             
             # updating last known cluch up pose
             self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
-            self.T_mzr_mz = RigidTransform(rotation=self.T_w_cu_t.rotation, 
-                                            from_frame='masters_zero', to_frame='masters_zero_ref')
-            self.T_mc_mcr = RigidTransform(rotation=self.T_w_cu_t.inverse().rotation, 
-                                            from_frame='masters_current_ref', to_frame='masters_current')
 
         self.clutch_state = cluch_down
 
 if __name__ == "__main__":
-    # left = MastersYuMiConnector("MTML")
+    left = MastersYuMiConnector("MTML")
     right = MastersYuMiConnector("MTMR")
     rospy.spin()

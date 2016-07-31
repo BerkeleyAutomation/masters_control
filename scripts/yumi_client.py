@@ -17,6 +17,21 @@ from alan.core import RigidTransform
 
 import IPython
 
+from multiprocessing import Process, Queue
+
+class _YuMiArmPoller(Process):
+
+    def __init__(self, arm, pose_q):
+        Process.__init__(self)
+        self.pose_q = pose_q
+        self.arm = arm
+
+    def run(self):
+        while True:
+            if not self.pose_q.empty():
+                pose = self.pose_q.get()
+                self.arm.goto_pose(pose)
+
 class _RateLimiter:
 
     def __init__(self, period):
@@ -58,13 +73,27 @@ class YuMiClient:
     #TODO: Test and set this value
     _ROT_MAG_SCALE = 0
 
-    def __init__(self, ip=YMC.IP, port_l=YMC.PORT_L, port_r=YMC.PORT_R, tcp=YMC.TCP_DEFAULT_GRIPPER):
+    def __init__(self):
         rospy.init_node('yumi_client', anonymous=True)
-        self.yumi = YuMiRobot(ip, port_l, port_r, tcp)
+        self.yumi = YuMiRobot()
         self.yumi.set_z('fine')
         self.yumi.set_v(200)
         self.yumi.reset_home()
-        self.yumi.set_z('z1')
+        self.yumi.set_v(1500)
+
+        self._pose_q = {
+            'left': Queue(maxsize=1),
+            'right': Queue(maxsize=1)
+        }
+
+        self._yumi_poller = {
+            'left': _YuMiArmPoller(self.yumi.left, self._pose_q['left']),
+            'right': _YuMiArmPoller(self.yumi.right, self._pose_q['right'])
+        }
+
+        self._yumi_poller['left'].start()
+        self._yumi_poller['right'].start()
+
         sleep(1)
         self.T_w_yi = {
             'left': self.yumi.left.get_pose().as_frames('yumi_init', 'world'),
@@ -104,9 +133,9 @@ class YuMiClient:
 
     def start(self):
         self._r_motion_sub = rospy.Subscriber(YuMiClient._R_REL, Pose, self._motion_callback_gen('right'))
-        #self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
-        #self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('left'))
-        #self._r_gripper_sub = rospy.Subscriber(YuMiClient._R_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('right'))
+        self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
+        self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('left'))
+        self._r_gripper_sub = rospy.Subscriber(YuMiClient._R_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('right'))
         
         rospy.on_shutdown(self._shutdown_hook_gen())
         rospy.spin()
@@ -128,9 +157,9 @@ class YuMiClient:
         return False
 
     def _motion_callback(self, arm_name, ros_pose):
-        rate_limiter = self.rate_limiter[arm_name]
-        if not rate_limiter.ok:
-            return
+        # rate_limiter = self.rate_limiter[arm_name]
+        # if not rate_limiter.ok:
+        #     return
 
         T_w_yi = self.T_w_yi[arm_name]
 
@@ -146,14 +175,17 @@ class YuMiClient:
         # offset using init pose
         T_w_yc = T_w_yi * self.T_yi_yir[arm_name] * T_yir_ycr * self.T_ycr_yc[arm_name]
 
-        if YuMiClient._close_enough(T_w_yc, self.last_T_w_yc[arm_name]):
-            return
+        # if YuMiClient._close_enough(T_w_yc, self.last_T_w_yc[arm_name]):
+        #     return
 
         # updating last pose
         self.last_T_w_yc[arm_name] = T_w_yc.copy()
         
         # send pose to YuMi
-        getattr(self.yumi, arm_name).goto_pose(T_w_yc)
+        pose_q = self._pose_q[arm_name]
+        if not pose_q.empty():
+            pose_q.get_nowait()
+        pose_q.put(T_w_yc)
 
     def _motion_callback_gen(self, arm_name):
         return lambda pose: self._motion_callback(arm_name, pose)
