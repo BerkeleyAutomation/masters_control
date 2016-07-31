@@ -15,6 +15,8 @@ from alan.control import YuMiConstants as YMC
 from alan.control import YuMiRobot
 from alan.core import RigidTransform
 
+import IPython
+
 class _RateLimiter:
 
     def __init__(self, period):
@@ -39,18 +41,16 @@ class YuMiClient:
     _R_REL = '/MTMR_YuMi/position_cartesian_current_rel'
     _L_GRIPPER_CLOSE = '/dvrk/MTML/gripper_closed_event'
     _R_GRIPPER_CLOSE = '/dvrk/MTMR/gripper_closed_event'
-    _L_GRIPPER_POSITION  = '/dvrk/MTML/gripper_position_current'
-    _R_GRIPPER_POSITION  = '/dvrk/MTMR/gripper_position_current'
 
-    _RTF_MC_YC = RigidTransform(rotation=[[0,-1,0],
-                                                                [1,0,0],
-                                                                [0,0,1]],
-                                from_frame='yumi_current', to_frame='masters_current')
+    _T_MC_YCR = RigidTransform(rotation=[[0,-1,0],
+                                        [1,0,0],
+                                        [0,0,1]],
+                                from_frame='yumi_current_ref', to_frame='masters_current')
     
-    _RTF_YR_MI = RigidTransform(rotation=[[0,1,0],
+    _T_YIR_MI = RigidTransform(rotation=[[0,1,0],
                                           [-1,0,0],
                                           [0,0,1]],
-                                from_frame='masters_init', to_frame='yumi_reference')
+                                from_frame='masters_init', to_frame='yumi_init_ref')
 
     _MASTERS_TO_YUMI_SCALE = 1
     _POSE_DIFF_THRESHOLD = 0.001 # this is in m
@@ -66,26 +66,30 @@ class YuMiClient:
         self.yumi.reset_home()
         self.yumi.set_z('z1')
         sleep(1)
-        self.init_pose = {
+        self.T_w_yi = {
             'left': self.yumi.left.get_pose().as_frames('yumi_init', 'world'),
             'right': self.yumi.right.get_pose().as_frames('yumi_init', 'world')
         }
-        self.rtf_yi_yr = {
-            'left': RigidTransform(rotation=self.init_pose['left'].inverse().rotation, 
-                                    from_frame='yumi_reference', to_frame='yumi_init'),
-            'right': RigidTransform(rotation=self.init_pose['right'].inverse().rotation, 
-                                    from_frame='yumi_reference', to_frame='yumi_init')
+        self.T_yi_yir = {
+            'left': RigidTransform(rotation=self.T_w_yi['left'].inverse().rotation, 
+                                    from_frame='yumi_init_ref', to_frame='yumi_init'),
+            'right': RigidTransform(rotation=self.T_w_yi['right'].inverse().rotation, 
+                                    from_frame='yumi_init_ref', to_frame='yumi_init')
         }
-        self.last_pose = {
-            'left': self.init_pose['left'].copy(),
-            'right': self.init_pose['right'].copy()
+        self.T_ycr_yc = {
+            'left': RigidTransform(rotation=self.T_w_yi['left'].rotation, 
+                                    from_frame='yumi_current', to_frame='yumi_current_ref'),
+            'right': RigidTransform(rotation=self.T_w_yi['right'].rotation, 
+                                    from_frame='yumi_current', to_frame='yumi_current_ref')
+        }
+        self.last_T_w_yc = {
+            'left': self.T_w_yi['left'].copy(),
+            'right': self.T_w_yi['right'].copy()
         }
         self.rate_limiter = {
             'left': _RateLimiter(YMC.COMM_PERIOD),
             'right': _RateLimiter(YMC.COMM_PERIOD)
         }
-        self.left_time = time()
-        self.left_count = 0
 
     def _shutdown_hook_gen(self):
         def shutdown_hook():
@@ -99,10 +103,10 @@ class YuMiClient:
         return shutdown_hook
 
     def start(self):
-        self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
         self._r_motion_sub = rospy.Subscriber(YuMiClient._R_REL, Pose, self._motion_callback_gen('right'))
-        self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('left'))
-        self._r_gripper_sub = rospy.Subscriber(YuMiClient._R_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('right'))
+        #self._l_motion_sub = rospy.Subscriber(YuMiClient._L_REL, Pose, self._motion_callback_gen('left'))
+        #self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('left'))
+        #self._r_gripper_sub = rospy.Subscriber(YuMiClient._R_GRIPPER_CLOSE, Bool, self._gripper_callback_gen('right'))
         
         rospy.on_shutdown(self._shutdown_hook_gen())
         rospy.spin()
@@ -116,9 +120,9 @@ class YuMiClient:
 
     @staticmethod
     def _close_enough(pose1, pose2):
-        delta_rtf = pose1.inverse() * pose2
+        delta_T = pose1.inverse() * pose2
 
-        diff = np.linalg.norm(delta_rtf.translation) + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_rtf.rotation)
+        diff = np.linalg.norm(delta_T.translation) + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_T.rotation)
         if diff < YuMiClient._POSE_DIFF_THRESHOLD:
             return True
         return False
@@ -128,44 +132,28 @@ class YuMiClient:
         if not rate_limiter.ok:
             return
 
-        #arm = getattr(self.yumi, arm_name)
-        rtf_w_yi = self.init_pose[arm_name]
+        T_w_yi = self.T_w_yi[arm_name]
 
-        # turn ros pose into rtf
-        rtf_mi_mc = YuMiClient._ros_to_rigid_transform(ros_pose, 'masters_current', 'masters_init')
+        # turn ros pose into rigid transform
+        T_mi_mc = YuMiClient._ros_to_rigid_transform(ros_pose, 'masters_current', 'masters_init')
         
         # scale translations
-        rtf_mi_mc.position = rtf_mi_mc.position * YuMiClient._MASTERS_TO_YUMI_SCALE
+        T_mi_mc.position = T_mi_mc.position * YuMiClient._MASTERS_TO_YUMI_SCALE
 
         # transform into YuMi basis
-        rtf_yr_yc = YuMiClient._RTF_YR_MI * rtf_mi_mc * YuMiClient._RTF_MC_YC
+        T_yir_ycr = YuMiClient._T_YIR_MI * T_mi_mc * YuMiClient._T_MC_YCR
 
         # offset using init pose
-        rtf_w_yc = rtf_w_yi * self.rtf_yi_yr[arm_name] * rtf_yr_yc
+        T_w_yc = T_w_yi * self.T_yi_yir[arm_name] * T_yir_ycr * self.T_ycr_yc[arm_name]
 
-        if YuMiClient._close_enough(rtf_w_yc, self.last_pose[arm_name]):
+        if YuMiClient._close_enough(T_w_yc, self.last_T_w_yc[arm_name]):
             return
 
         # updating last pose
-        self.last_pose[arm_name] = rtf_w_yc.copy()
+        self.last_T_w_yc[arm_name] = T_w_yc.copy()
         
         # send pose to YuMi
-        start = time()
-        print rtf_w_yc.translation
-        print rtf_w_yc.quaternion
-        getattr(self.yumi, arm_name).goto_pose(rtf_w_yc)
-        end = time()
-
-        self.left_count += 1
-        if arm_name == 'left':
-            cur = time()
-            period = cur - self.left_time
-            if period > 1:
-                print "Sent {0} msgs in {1}s. About {2}hz".format(self.left_count, period, self.left_count /1./ period)
-                self.left_count = 0
-                self.left_time = time()
-
-        return end-start
+        getattr(self.yumi, arm_name).goto_pose(T_w_yc)
 
     def _motion_callback_gen(self, arm_name):
         return lambda pose: self._motion_callback(arm_name, pose)
