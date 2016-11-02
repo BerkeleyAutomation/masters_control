@@ -18,22 +18,6 @@ self._l_gripper_sub = rospy.Subscriber(YuMiClient._L_GRIPPER_CLOSE, Bool, self._
         self._l_gripper_sub.unregister()
         self._r_gripper_sub.unregister()
 
-from multiprocessing import Process, Queue
-
-class _YuMiArmPoller(Process):
-
-    def __init__(self, arm, pose_q, times_q):
-        Process.__init__(self)
-        self.pose_q = pose_q
-        self.arm = arm
-
-    def run(self):
-        while True:
-            if not self.pose_q.empty():
-                pose = self.pose_q.get()
-                if pose is None:
-                    break
-                res = self.arm.goto_pose(pose)
 
 class _RateLimiter:
 

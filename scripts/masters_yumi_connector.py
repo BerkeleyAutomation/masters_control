@@ -9,11 +9,10 @@ import rospy
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose
 from time import time
+from masters_control.srv import pose_str
 
-from alan.core import RigidTransform
+from core import RigidTransform
 from util import T_to_ros_pose, ros_pose_to_T
-
-import IPython
 
 _T_MC_YCR = RigidTransform(rotation=[[0,-1,0],
                                         [1,0,0],
