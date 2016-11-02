@@ -71,7 +71,7 @@ class YuMiClient:
     def start(self):
         rospy.init_node('yumi_teleop_stream', anonymous=True)
 
-        self.init_pose_reset_service = rospy.Service('yumi_teleop_reset_init_poses', pose_str, self._reset_init_poses)
+        self.init_pose_reset_service = rospy.Service('yumi_teleop_stream_reset_init_poses', pose_str, self._reset_init_poses)
 
         self._r_motion_sub = rospy.Subscriber(YuMiClient._R_SUB, Pose, self._motion_callback_gen('right'))
         self._l_motion_sub = rospy.Subscriber(YuMiClient._L_SUB, Pose, self._motion_callback_gen('left'))
