@@ -34,3 +34,30 @@ class _YuMiArmPoller(Process):
                 if pose is None:
                     break
                 res = self.arm.goto_pose(pose)
+
+class _RateLimiter:
+
+    def __init__(self, period):
+        self.period = period
+        self.last_time = None
+
+    @property
+    def ok(self):
+        if self.last_time is None:
+            self.last_time = time()
+            return True
+
+        cur_time = time()
+        if cur_time - self.last_time >= self.period:
+            self.last_time = time()
+            return True
+        return False
+
+    @staticmethod
+    def _close_enough(pose1, pose2):
+        delta_T = pose1.inverse() * pose2
+
+        diff = np.linalg.norm(delta_T.translation) + YuMiClient._ROT_MAG_SCALE * np.linalg.norm(delta_T.rotation)
+        if diff < YuMiClient._POSE_DIFF_THRESHOLD:
+            return True
+        return False
