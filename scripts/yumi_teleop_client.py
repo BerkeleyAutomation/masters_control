@@ -10,6 +10,7 @@ import numpy as np
 import rospy
 from multiprocess import Process, Queue
 
+from std_msgs.msg import Bool
 from masters_control.srv import str_str
 from util import str_str_service_wrapper
 
@@ -115,13 +116,22 @@ class YuMiTeleopClient:
         self.menu_demo = None
 
         self.ui = UI(cid)
-        #TODO: Subscribe to gripper events and republish
 
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
-        rospy.wait_for_service('yumi_teleop_host_ui_service')
 
+        rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
+
+        #TODO: Subscribe to gripper events and republish
+        self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
+        self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
+
+    def _gripper_callback_gen(self, arm_name):
+        def callback(gripper_closed):
+            if self.cur_state == "teleop":
+                self.ui_service("gripper", "('{0}',{1})".format(arm_name, gripper_closed.data))
+        return callback
 
     def run(self):
         demo_names = eval(self.ui_service('list_demos'))

@@ -44,6 +44,7 @@ class _YuMiArmPoller(Process):
                     self.forward_poses = cmd[1]
                 elif cmd[0] == 'stop':
                     break
+            sleep(0.001)
 
     def stop(self):
         self.cmds_q.put(('stop',))
@@ -187,6 +188,8 @@ class YuMiTeleopHost:
         elif msg.req == "teleop_finish":
             self._teleop_finish()
             self.cur_state = 'standby'
+        elif msg.req == "gripper":
+            self.cmd_gripper(msg.data)
         return "ok"
 
     def t_teleop_record_pause(self, msg):
@@ -205,6 +208,8 @@ class YuMiTeleopHost:
         elif msg.req == "teleop_finish":
             self._teleop_finish()
             self.cur_state = 'standby'
+        elif msg.req == "gripper":
+            self.cmd_gripper(msg.data)
         return "ok"
 
     def t_teleop_pause(self, msg):
@@ -215,6 +220,14 @@ class YuMiTeleopHost:
             self._teleop_finish()
             self.cur_state = 'standby'
         return "ok"
+
+    def cmd_gripper(self, data):
+        cmd = eval(data)
+        arm = getattr(self.y, cmd[0])
+        if cmd[1]:
+            arm.close_gripper()
+        else:
+            arm.open_gripper()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
