@@ -1,4 +1,4 @@
 string req
 ---
-Pose left
-Pose right
+geometry_msgs/Pose left
+geometry_msgs/Pose right
