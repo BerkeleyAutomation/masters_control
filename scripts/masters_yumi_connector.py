@@ -83,7 +83,6 @@ class MastersYuMiConnector:
         if rospy.is_shutdown():
             return
 
-        rospy.loginfo("got: {0}".format([ros_pose.position.x, ros_pose.position.y, ros_pose.position.z]))
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
 
         if not self.has_zeroed:
@@ -98,6 +97,7 @@ class MastersYuMiConnector:
             T_yir_ycr = _T_YIR_MI * T_mi_mc * _T_MC_YCR
             T_w_yc = self.T_w_yi * self.T_yi_yir * T_yir_ycr * self.T_ycr_yc
 
+            rospy.loginfo("snt: {0}".format(T_w_yc.translation))
             self.pub.publish(T_to_ros_pose(T_w_yc))
 
     def _clutch_callback(self, msg):
