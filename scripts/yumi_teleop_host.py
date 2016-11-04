@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 YuMiTeleopHost - core script that manages teleop and motion interfaces as well
 as data recording for demonstrations.
@@ -14,7 +15,7 @@ from core import DataStreamRecorder, DataStreamSyncer
 from perception import OpenCVCameraSensor
 
 from masters_control.srv import str_str
-from teleop_experiment_logger import TeleopExperimentLogger
+#from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
 
 import IPython
@@ -54,9 +55,9 @@ class YuMiTeleopHost:
 
     def __init__(self, v, z):
         self.y = YuMiRobot()
-        self.set_v(v)
-        self.set_z(z)
-        self.reset_home()
+        self.y.set_v(v)
+        self.y.set_z(z)
+        self.y.reset_home()
 
         self.qs = {
             'cmds': {
@@ -74,6 +75,9 @@ class YuMiTeleopHost:
             'right': _YuMiArmPoller(self.y.right, self.qs['poses']['right'], self.qs['cmds']['right']),
         }
 
+        # TODO: load actual demo names
+        self._demo_names = ["demo1", "demo2", "demo3"]
+
     def _enqueue_pose_gen(self, q):
         def enqueue_pose(pose):
             T = ros_pose_to_T(pose)
@@ -85,32 +89,37 @@ class YuMiTeleopHost:
     def _shutdown_hook_gen(self):
         def shutdown_hook():
             for poller in self.pollers.values():
-                polelr.stop()
+                poller.stop()
             for sub in self.subs.values():
                 sub.unregister()
         return shutdown_hook
 
     def dispatcher(self, msg):
+        rospy.loginfo("Rcv {0}".format(msg))
         transition = getattr(self, "t_{0}".format(self.cur_state))
-        return transition(msg)
+        res = transition(msg)
+        rospy.loginfo("Snt {0}".format(res))
+        return res
 
     def run(self):
-        rospy.loginfo("Init YuMiTeleopHost")
         rospy.init_node("yumi_teleop_host")
+        rospy.loginfo("Init YuMiTeleopHost")
 
         self.subs = {
-            'left': rospy.Subscriber(_L_SUB, Pose, enqueue_pose_gen(poller_pose_q_left)),
-            'right': rospy.Subscriber(_R_SUB, Pose, enqueue_pose_gen(poller_pose_q_right)),
+            'left': rospy.Subscriber(_L_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['left'])),
+            'right': rospy.Subscriber(_R_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['right'])),
         }
 
         self.cur_state = 'standby'
 
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
 
-        rospy.wait_for_service('masters_yumi_transform_reset_init_poses')
-        self.init_pose_service = rospy.ServiceProxy('masters_yumi_transform_reset_init_poses', pose_str)
+        #rospy.wait_for_service('masters_yumi_transform_reset_init_poses')
+        #self.init_pose_service = rospy.ServiceProxy('masters_yumi_transform_reset_init_poses', pose_str)
 
         rospy.on_shutdown(self._shutdown_hook_gen())
+
+        rospy.loginfo("Serving UI Service...")
         rospy.spin()
 
     def _set_poller_forwards(self, val):
@@ -121,7 +130,7 @@ class YuMiTeleopHost:
         left_pose = T_to_ros_pose(self.y.left.get_pose())
         right_pose = T_to_ros_pose(self.y.right.get_pose())
 
-        self.init_pose_service(left=left_pose, right=right_pose)
+        #self.init_pose_service(left=left_pose, right=right_pose)
 
     def _teleop_begin(self, demo_name=False):
         self.y.reset_home()
@@ -213,5 +222,5 @@ if __name__ == "__main__":
     parser.add_argument('-v', '--velocity', type=int, default=1500, help='speed settings for YuMi')
     args = parser.parse_args()
 
-    yth = YuMiTeleopHost(args.v, args.z)
+    yth = YuMiTeleopHost(args.velocity, args.zone)
     yth.run()

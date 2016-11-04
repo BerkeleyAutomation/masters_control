@@ -7,9 +7,11 @@ Author: Jacky Liang
 #import rospy
 import cv2
 import numpy as np
+import rospy
 from multiprocess import Process, Queue
 
 from masters_control.srv import str_str
+from util import str_str_service_wrapper
 
 class UI(Process):
 
@@ -84,7 +86,8 @@ class UI(Process):
                 elif pressed == ord('d'):
                     self.res_q.put(self.list_view[self.list_index])
                     self.list_view = []
-                self.list_index = np.clip(self.list_index, 0, len(self.list_view))
+                if len(self.list_view) > 0:
+                    self.list_index = self.list_index % len(self.list_view)
             if pressed == ord('a'):
                 self.show_overlay = not self.show_overlay
 
@@ -114,15 +117,14 @@ class YuMiTeleopClient:
         self.ui = UI(cid)
         #TODO: Subscribe to gripper events and republish
 
-    def run(self):
-        '''
-        rospy.loginfo("Init YuMiTeleopClient")
         rospy.init_node("yumi_teleop_client")
-        rospy.wait_for_service('yumi_teleop_hostUI_service')
-        self.ui_service = rospy.ServiceProxy('yumi_teleop_host_UI_service', str_str)
-        '''
-        #demo_names = eval(self.ui_service('list_demos'))
-        demo_names = ['a','b','c']
+        rospy.loginfo("Init YuMiTeleopClient")
+        rospy.wait_for_service('yumi_teleop_host_ui_service')
+
+        self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
+
+    def run(self):
+        demo_names = eval(self.ui_service('list_demos'))
         self.menu_demo = tuple(demo_names) + ("Back",)
 
         "A FSM to interact with the teleop interface"
@@ -146,7 +148,7 @@ class YuMiTeleopClient:
         if ui_input == "Collect Demos":
             return "demo_selection", self.menu_demo, True
         elif ui_input == "Sandbox":
-            #res = self.ui_service("teleop_start")
+            res = self.ui_service("teleop_start")
             return "teleop", self.menu_pause_teleop, False
         elif ui_input == "Quit":
             return "exit", None, None
@@ -154,23 +156,23 @@ class YuMiTeleopClient:
     def t_demo_selection(self, ui_input):
         if ui_input == "Back":
             return "standby", self.menu_main, True
-        #res = self.ui_service("choose_demo", ui_input)
+        res = self.ui_service("choose_demo", ui_input)
         return "teleop", self.menu_pause_teleop, False
 
     def t_teleop(self, ui_input):
         if ui_input == "Pause":
-            #res = self.ui_service("teleop_pause")
+            res = self.ui_service("teleop_pause")
             return "teleop_paused", self.menu_resume_teleop, True
         elif ui_input == "Finish":
-            #res = self.ui_service("teleop_finish")
+            res = self.ui_service("teleop_finish")
             return "standby", self.menu_main, True
 
     def t_teleop_paused(self, ui_input):
         if ui_input == "Resume":
-            #res = self.ui_service("teleop_resume")
+            res = self.ui_service("teleop_resume")
             return "teleop", self.menu_pause_teleop, True
         elif ui_input == "Finish":
-            #res = self.ui_service("teleop_finish")
+            res = self.ui_service("teleop_finish")
             return "standby", self.menu_main, True
 
 if __name__ == "__main__":
