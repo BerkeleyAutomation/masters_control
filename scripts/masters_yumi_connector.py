@@ -44,8 +44,8 @@ class MastersYuMiConnector:
         self.T_ycr_yc = None
 
         full_ros_namespace = "/dvrk/" + name
-        rospy.loginfo("Initializing node")
         rospy.init_node('master_yumi_connector',anonymous=True)
+        rospy.loginfo("Initializing node")
 
         # subscribing to clutch and rel pose
         rospy.loginfo("Subscribing to position_cartesian_current for {0}".format(name))
@@ -56,14 +56,17 @@ class MastersYuMiConnector:
         self.clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
 
         # publishing to /yumi/r or /yumi/l
-        rospy.loginfo("Publishing relative position_cartesian_current for {0}".format(name))
-        self.pub = rospy.Publisher('/yumi/{0}'.format(name[-1].lower()), Pose, queue_size=1)
+        self.pub_name = '/yumi/{0}'.format(name[-1].lower())
+        self.pub = rospy.Publisher(self.pub_name, Pose, queue_size=1)
 
         self.has_zeroed = False
         self.has_clutched_down = False
         self.has_clutched_up = False
 
+        rospy.loginfo("Waiting for first resest init pose...")
+
     def _reset_init_poses(self, yumi_pose):
+        rospy.loginfo("Reset Init Pose for {0}".format(self.pub_name))
         self.has_zeroed = True
 
         self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
@@ -75,6 +78,7 @@ class MastersYuMiConnector:
         self.T_w_yi = yumi_pose.copy()
         self.T_yi_yir = RigidTransform(rotation=self.T_w_yi.inverse().rotation, from_frame='yumi_init_ref', to_frame='yumi_init')
         self.T_ycr_yc = RigidTransform(rotation=self.T_w_yi.rotation, from_frame='yumi_current', to_frame='yumi_current_ref')
+        rospy.loginfo("Done!")
 
     def _clutch(self, state):
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
@@ -97,7 +101,6 @@ class MastersYuMiConnector:
             T_yir_ycr = _T_YIR_MI * T_mi_mc * _T_MC_YCR
             T_w_yc = self.T_w_yi * self.T_yi_yir * T_yir_ycr * self.T_ycr_yc
 
-            rospy.loginfo("snt: {0}".format(T_w_yc.translation))
             self.pub.publish(T_to_ros_pose(T_w_yc))
 
     def _clutch_callback(self, msg):

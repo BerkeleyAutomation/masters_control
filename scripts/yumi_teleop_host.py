@@ -15,7 +15,7 @@ from core import DataStreamRecorder, DataStreamSyncer
 from perception import OpenCVCameraSensor
 from Queue import Empty
 from masters_control.srv import str_str, pose_str
-from teleop_experiment_logger import TeleopExperimentLogger
+#from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
 
 import IPython
@@ -70,6 +70,8 @@ class _YuMiArmPoller(Process):
                     method(*args, **kwargs)
             sleep(0.001)
 
+        self.y.stop()
+
     def stop(self):
         self.cmds_q.put(('stop',))
 
@@ -121,6 +123,7 @@ class YuMiTeleopHost:
                 poller.stop()
             for sub in self.subs.values():
                 sub.unregister()
+            self.ysub.stop()
         return shutdown_hook
 
     def dispatcher(self, msg):
@@ -136,6 +139,8 @@ class YuMiTeleopHost:
 
         for poller in self.pollers.values():
             poller.start()
+        self._call_both_poller('reset_home')
+        self._call_both_poller('open_grippers')
 
         self.subs = {
             'left': rospy.Subscriber(_L_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['left'])),
@@ -172,9 +177,6 @@ class YuMiTeleopHost:
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
     def _teleop_begin(self, demo_name=False):
-        self._call_both_poller('reset_home')
-        self._call_both_poller('open_grippers')
-
         record = demo_name is not None
         if record:
             '''
@@ -184,6 +186,7 @@ class YuMiTeleopHost:
             '''
             pass
 
+        sleep(1)
         self._reset_masters_yumi_connector()
 
         self._set_poller_forwards(True)
@@ -203,6 +206,8 @@ class YuMiTeleopHost:
 
     def _teleop_finish(self):
         self._set_poller_forwards(False)
+        self._call_both_poller('reset_home')
+        self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
             # TODO: save recorded data
             pass
