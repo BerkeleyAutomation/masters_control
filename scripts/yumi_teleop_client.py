@@ -123,15 +123,19 @@ class YuMiTeleopClient:
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
 
-        #TODO: Subscribe to gripper events and republish
         self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
+        self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
+        self._clutch_down = False
 
     def _gripper_callback_gen(self, arm_name):
         def callback(gripper_closed):
-            if self.cur_state == "teleop":
+            if self.cur_state == "teleop" and not self._clutch_down:
                 self.ui_service("gripper", "('{0}',{1})".format(arm_name, gripper_closed.data))
         return callback
+
+    def _clutch_callback(self, msg):
+        self._clutch_down = msg.data
 
     def run(self):
         demo_names = eval(self.ui_service('list_demos'))

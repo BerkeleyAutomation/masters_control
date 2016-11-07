@@ -9,7 +9,7 @@ import argparse
 import rospy
 from geometry_msgs.msg import Pose
 from time import sleep
-from yumipy import YuMiRobot, YuMiSubscriber
+from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer
 from perception import OpenCVCameraSensor
@@ -50,7 +50,7 @@ class _YuMiArmPoller(Process):
             if self.forward_poses and not self.pose_q.empty():
                 try:
                     pose = self.pose_q.get()
-                    res = self.arm.goto_pose(pose)
+                    res = self.arm.goto_pose(pose, relative=True)
                 except Empty:
                     pass
             if not self.cmds_q.empty():
@@ -186,7 +186,9 @@ class YuMiTeleopHost:
             '''
             pass
 
-        sleep(1)
+        self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
+        self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
+        sleep(3)
         self._reset_masters_yumi_connector()
 
         self._set_poller_forwards(True)

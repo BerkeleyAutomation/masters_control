@@ -52,7 +52,7 @@ class MastersYuMiConnector:
         self.rel_pose_sub = rospy.Subscriber('{0}/position_cartesian_current'.format(full_ros_namespace),
                          Pose, self._position_cartesian_current_callback)
 
-        rospy.loginfo("Subscribing to clutch for {0}".format(name))
+        rospy.loginfo("Subscribing to clutch")
         self.clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
 
         # publishing to /yumi/r or /yumi/l
@@ -84,9 +84,6 @@ class MastersYuMiConnector:
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
 
     def _position_cartesian_current_callback(self, ros_pose):
-        if rospy.is_shutdown():
-            return
-
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
 
         if not self.has_zeroed:
@@ -104,9 +101,6 @@ class MastersYuMiConnector:
             self.pub.publish(T_to_ros_pose(T_w_yc))
 
     def _clutch_callback(self, msg):
-        if rospy.is_shutdown():
-            return
-
         cluch_down = msg.data
 
         if cluch_down:
