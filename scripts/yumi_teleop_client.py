@@ -8,7 +8,7 @@ Author: Jacky Liang
 import cv2
 import numpy as np
 import rospy
-from multiprocess import Process, Queue
+from multiprocessing import Process, Queue
 
 from std_msgs.msg import Bool
 from masters_control.srv import str_str
