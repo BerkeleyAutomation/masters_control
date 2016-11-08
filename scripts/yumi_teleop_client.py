@@ -59,7 +59,7 @@ class UI(Process):
         self.show_overlay = True
         while True:
             _, frame = self.cam.read()
-            pedals_io = {'up':False, 'down':False, 'select':False}
+            pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
                 req = self.req_q.get()
@@ -82,7 +82,7 @@ class UI(Process):
 
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
-                if pressed == ord('w') or pedals_io['up']:
+                if pressed == ord('w'):
                     self.list_index -= 1
                 elif pressed == ord('s') or pedals_io['down']:
                     self.list_index += 1
@@ -91,7 +91,7 @@ class UI(Process):
                     self.list_view = []
                 if len(self.list_view) > 0:
                     self.list_index = self.list_index % len(self.list_view)
-            if pressed == ord('a'):
+            if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
         self.cam.release()
@@ -132,7 +132,7 @@ class YuMiTeleopClient:
         self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
         self._select_sub = rospy.Subscriber('/dvrk/footpedals/camera', Bool, self._pedals_call_back_gen('select'))
-        self._up_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus', Bool, self._pedals_call_back_gen('up'))
+        self._overlay_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus', Bool, self._pedals_call_back_gen('overlay'))
         self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
@@ -145,7 +145,7 @@ class YuMiTeleopClient:
             self._l_gripper_sub.unregister()
             self._r_gripper_sub.unregister()
             self._select_sub.unregister()
-            self._up_sub.unregister()
+            self._overlay_sub.unregister()
             self._down_sub.unregister()
             self._clutch_sub.unregister()
         return shutdown_hook
@@ -154,7 +154,7 @@ class YuMiTeleopClient:
         def callback(msg):
             is_down = msg.data
             if is_down:
-              pedals_io = {'up':False, 'down':False, 'select':False}
+              pedals_io = {'overlay':False, 'down':False, 'select':False}
               pedals_io[pedal] = True
               self.ui.set_pedals(pedals_io)
         return callback
