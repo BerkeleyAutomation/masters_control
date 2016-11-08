@@ -4,11 +4,10 @@ Script to be ran on the 'client' machine on a masters-YuMi teleop setup. Client
 machine is the computer connected to the masters' vision system.
 Author: Jacky Liang
 """
-#import rospy
+import rospy
 import cv2
 import numpy as np
-import rospy
-from multiprocess import Process, Queue
+from multiprocessing import Process, Queue
 
 from std_msgs.msg import Bool
 from masters_control.srv import str_str
@@ -51,14 +50,16 @@ class UI(Process):
 
     def run(self):
         self.cam = cv2.VideoCapture(self.cid)
-        self.left = cv2.namedWindow("left")
-        self.right = cv2.namedWindow("right")
+
+        self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
+        self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
 
         self.list_view = []
         self.list_index = 0
         self.show_overlay = True
         while True:
             _, frame = self.cam.read()
+            pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
                 req = self.req_q.get()
@@ -69,6 +70,8 @@ class UI(Process):
                     self.list_index = 0
                 elif req[0] == "overlay":
                     self.show_overlay = req[1]
+                elif req[0] == "pedals":
+                    pedals_io = req[1]
 
             if self.show_overlay and len(self.list_view) > 0:
                 overlay = self.gen_list_view(frame)
@@ -77,19 +80,18 @@ class UI(Process):
             cv2.imshow('left', frame)
             cv2.imshow('right', frame)
 
-            # TODO: Replace w/ ROS subscribers
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
                 if pressed == ord('w'):
                     self.list_index -= 1
-                elif pressed == ord('s'):
+                elif pressed == ord('s') or pedals_io['down']:
                     self.list_index += 1
-                elif pressed == ord('d'):
+                elif pressed == ord('d') or pedals_io['select']:
                     self.res_q.put(self.list_view[self.list_index])
                     self.list_view = []
                 if len(self.list_view) > 0:
                     self.list_index = self.list_index % len(self.list_view)
-            if pressed == ord('a'):
+            if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
         self.cam.release()
@@ -107,6 +109,9 @@ class UI(Process):
     def stop(self):
         self.req_q.put(("stop",))
 
+    def set_pedals(self, pedals_io):
+        self.req_q.put(("pedals", pedals_io))
+
 class YuMiTeleopClient:
 
     def __init__(self, cid):
@@ -119,14 +124,40 @@ class YuMiTeleopClient:
 
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
-
+        rospy.loginfo("Waiting for host ui service...")
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
+        rospy.loginfo("UI Service established!")
 
         self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
+        self._select_sub = rospy.Subscriber('/dvrk/footpedals/camera', Bool, self._pedals_call_back_gen('select'))
+        self._overlay_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus', Bool, self._pedals_call_back_gen('overlay'))
+        self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
+
+        rospy.on_shutdown(self._shutdown_hook_gen())
+
+    def _shutdown_hook_gen(self):
+        def shutdown_hook():
+            self.ui.stop()
+            self._l_gripper_sub.unregister()
+            self._r_gripper_sub.unregister()
+            self._select_sub.unregister()
+            self._overlay_sub.unregister()
+            self._down_sub.unregister()
+            self._clutch_sub.unregister()
+        return shutdown_hook
+
+    def _pedals_call_back_gen(self, pedal):
+        def callback(msg):
+            is_down = msg.data
+            if is_down:
+              pedals_io = {'overlay':False, 'down':False, 'select':False}
+              pedals_io[pedal] = True
+              self.ui.set_pedals(pedals_io)
+        return callback
 
     def _gripper_callback_gen(self, arm_name):
         def callback(gripper_closed):
