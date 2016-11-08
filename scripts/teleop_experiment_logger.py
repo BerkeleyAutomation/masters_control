@@ -3,6 +3,7 @@ Experiment Logger class for teleop demonstrations
 Author: Jacky Liang
 """
 from core import ExperimentLogger, CSVModel
+import os
 from joblib import dump
 import cv2
 
@@ -11,7 +12,7 @@ class TeleopExperimentLogger(ExperimentLogger):
     RECORDS_HEADERS_TYPES = (
             ('experiment_id','str'),
             ('demo_name','str'),
-            ('trial_num', 'int')
+            ('trial_num', 'int'),
             ('trial_duration','float'),
             ('path_trial','str')
         )
@@ -67,7 +68,7 @@ class TeleopExperimentLogger(ExperimentLogger):
         writer = cv2.VideoWriter(os.path.join(trial_path, 'video.avi'), fourcc, 30, tuple(webcam_data[0].shape))
         for frame in webcam_data:
             writer.write(frame)
-        writer.release()       
+        writer.release()
 
         # saving visual data
         dump(os.path.join(trial_path, "kinect_depth_data.jb"), kinect_depth_data, compress=3)

@@ -11,11 +11,11 @@ from geometry_msgs.msg import Pose
 from time import sleep
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
 from yumipy import YuMiConstants as ymc
-from core import DataStreamRecorder, DataStreamSyncer
+from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
 from perception import OpenCVCameraSensor
 from Queue import Empty
 from masters_control.srv import str_str, pose_str
-#from teleop_experiment_logger import TeleopExperimentLogger
+from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
 
 import IPython
@@ -83,7 +83,7 @@ class _YuMiArmPoller(Process):
 
 class YuMiTeleopHost:
 
-    def __init__(self, v, z):
+    def __init__(self, cfg):
         self.qs = {
             'cmds': {
                 'left': Queue(),
@@ -98,12 +98,15 @@ class YuMiTeleopHost:
         self.ysub = YuMiSubscriber()
         self.ysub.start()
 
+        self.logger = TeleopExperimentLogger(cfg['output_path'], cfg['supervisor'])
+
         self.pollers = {
-            'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], z, v, 'left'),
-            'right': _YuMiArmPoller(self.qs['poses']['right'], self.qs['cmds']['right'], z, v, 'right'),
+            'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], cfg['z'], cfg['v'], 'left'),
+            'right': _YuMiArmPoller(self.qs['poses']['right'], self.qs['cmds']['right'], cfg['z'], cfg['v'], 'right'),
         }
 
         # TODO: load actual demo names
+        demo_path = cfg['demo_path']
         self._demo_names = ["demo1", "demo2", "demo3"]
 
     def _enqueue_pose_gen(self, q):
@@ -278,9 +281,10 @@ class YuMiTeleopHost:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
-    parser.add_argument('-z', '--zone', type=str, default='fine', help='zone settings for YuMi')
-    parser.add_argument('-v', '--velocity', type=int, default=1500, help='speed settings for YuMi')
+    parser.add_argument('-c', '--config_path', type=str, default='cfg/host_config.yaml', help='path to config file')
     args = parser.parse_args()
 
-    yth = YuMiTeleopHost(args.velocity, args.zone)
+    cfg = YamlConfig(args.config_path)
+
+    yth = YuMiTeleopHost(cfg)
     yth.run()
