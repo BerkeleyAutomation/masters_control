@@ -50,8 +50,9 @@ class UI(Process):
 
     def run(self):
         self.cam = cv2.VideoCapture(self.cid)
-        self.left = cv2.namedWindow("left")
-        self.right = cv2.namedWindow("right")
+
+        self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
+        self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
 
         self.list_view = []
         self.list_index = 0
@@ -79,7 +80,6 @@ class UI(Process):
             cv2.imshow('left', frame)
             cv2.imshow('right', frame)
 
-            # TODO: Replace w/ ROS subscribers
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
                 if pressed == ord('w') or pedals_io['up']:
@@ -136,6 +136,19 @@ class YuMiTeleopClient:
         self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
+
+        rospy.on_shutdown(self._shutdown_hook_gen())
+
+    def _shutdown_hook_gen(self):
+        def shutdown_hook():
+            self.ui.stop()
+            self._l_gripper_sub.unregister()
+            self._r_gripper_sub.unregister()
+            self._select_sub.unregister()
+            self._up_sub.unregister()
+            self._down_sub.unregister()
+            self._clutch_sub.unregister()
+        return shutdown_hook
 
     def _pedals_call_back_gen(self, pedal):
         def callback(msg):
