@@ -146,15 +146,16 @@ class YuMiTeleopHost:
             'left': rospy.Subscriber(_L_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['left'])),
             'right': rospy.Subscriber(_R_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['right'])),
         }
+        rospy.on_shutdown(self._shutdown_hook_gen())
 
         self.cur_state = 'standby'
 
+        rospy.loginfo("Establishing UI Service...")
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
-
+        rospy.loginfo("Waiting for Teleop Pose Service...")
         rospy.wait_for_service('masters_yumi_transform_reset_init_poses')
         self.init_pose_service = rospy.ServiceProxy('masters_yumi_transform_reset_init_poses', pose_str)
-
-        rospy.on_shutdown(self._shutdown_hook_gen())
+        rospy.loginfo("Established Teleop Post Service!")
 
         rospy.loginfo("Serving UI Service...")
         rospy.spin()
