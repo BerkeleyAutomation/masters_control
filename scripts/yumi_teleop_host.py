@@ -12,7 +12,7 @@ from time import sleep
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
-from perception import OpenCVCameraSensor
+from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
 from Queue import Empty
 from masters_control.srv import str_str, pose_str
 from teleop_experiment_logger import TeleopExperimentLogger
@@ -83,7 +83,7 @@ class _YuMiArmPoller(Process):
 
 class YuMiTeleopHost:
 
-    def __init__(self, cfg):
+    def __init__(self, cfg_path, mode):
         self.qs = {
             'cmds': {
                 'left': Queue(),
@@ -95,10 +95,12 @@ class YuMiTeleopHost:
             }
         }
 
-        self.ysub = YuMiSubscriber()
-        self.ysub.start()
+        self.mode = mode
+        self.cfg_path = cfg_path
+        self.cfg = YamlConfig(self.cfg_path)
 
-        self.logger = TeleopExperimentLogger(cfg['output_path'], cfg['supervisor'])
+        if self.mode == 'recocrd':
+            self.logger = TeleopExperimentLogger(cfg['output_path'], cfg['supervisor'])
 
         self.pollers = {
             'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], cfg['z'], cfg['v'], 'left'),
@@ -108,6 +110,7 @@ class YuMiTeleopHost:
         # TODO: load actual demo names
         demo_path = cfg['demo_path']
         self._demo_names = ["demo1", "demo2", "demo3"]
+        self._recording_name = None
 
     def _enqueue_pose_gen(self, q):
         def enqueue_pose(pose):
@@ -127,6 +130,9 @@ class YuMiTeleopHost:
             for sub in self.subs.values():
                 sub.unregister()
             self.ysub.stop()
+            self.webcam.stop()
+            self.syncer.stop()
+
         return shutdown_hook
 
     def dispatcher(self, msg):
@@ -137,6 +143,53 @@ class YuMiTeleopHost:
         return res
 
     def run(self):
+        # establishing data recording
+        self.datas = {}
+
+        def kinect_gen():
+            kinect = []
+            def kinect_frames():
+                if not kinect:
+                    kinect[0] = Kinect2Sensor(packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL)
+                    kinect[0].start()
+                return kinect[0].frames()
+            return kinect_frames
+
+        self.ysub = YuMiSubscriber()
+        self.ysub.start()
+
+        self.webcam = OpenCVCameraSensor(self.cfg['webcam'])
+        self.webcam.start()
+
+        self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen())
+        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam)
+        self.datas['poses'] = {
+            'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose),
+            'right': DataStreamRecorder('motion_poses_right', self.ysub.right.get_pose)
+        }
+        self.datas['states'] = {
+            'left': DataStreamRecorder('motion_states_left', self.ysub.left.get_state),
+            'right': DataStreamRecorder('motion_states_right', self.ysub.right.get_state)
+        }
+        self.datas['torques'] = {
+            'left': DataStreamRecorder('motion_torques_left', self.ysub.left.get_pose),
+            'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_pose)
+        }
+
+        self.all_datas = [
+            self.datas['kinect'],
+            self.datas['webcam'],
+            self.datas['poses']['left'],
+            self.datas['poses']['right'],
+            self.datas['states']['left'],
+            self.datas['states']['right'],
+            self.datas['torques']['left'],
+            self.datas['torques']['right']
+        ]
+        self.syncer = DataStreamSyncer(all_datas, self.cfg['fps'])
+        self.syncer.start()
+        self.syncer.pause()
+
         rospy.init_node("yumi_teleop_host")
         rospy.loginfo("Init YuMiTeleopHost")
 
@@ -153,14 +206,14 @@ class YuMiTeleopHost:
 
         self.cur_state = 'standby'
 
-        rospy.loginfo("Establishing UI Service...")
-        self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
         rospy.loginfo("Waiting for Teleop Pose Service...")
         rospy.wait_for_service('masters_yumi_transform_reset_init_poses')
         self.init_pose_service = rospy.ServiceProxy('masters_yumi_transform_reset_init_poses', pose_str)
         rospy.loginfo("Established Teleop Post Service!")
 
+        self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
         rospy.loginfo("Serving UI Service...")
+
         rospy.spin()
 
     def _set_poller_forwards(self, val):
@@ -183,31 +236,30 @@ class YuMiTeleopHost:
     def _teleop_begin(self, demo_name=False):
         record = demo_name is not None
         if record:
+            self._recording_name = demo_name
             '''
             TODO:
             - perform setup motions
-            - setup data subs/syncers
             '''
-            pass
 
         self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
         self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
         sleep(3)
         self._reset_masters_yumi_connector()
 
+        if record:
+            self.syncer.resume(reset_time=True)
         self._set_poller_forwards(True)
 
     def _teleop_pause(self):
         if self.cur_state == "teleop_record":
-            # TODO: pause data recordings
-            pass
+            self.syncer.pause()
         self._set_poller_forwards(False)
 
     def _teleop_resume(self):
         self._reset_masters_yumi_connector()
         if self.cur_state == "teleop_record_pause":
-            # TODO: resume data recordings
-            pass
+            self.syncer.resume()
         self._set_poller_forwards(True)
 
     def _teleop_finish(self):
@@ -215,8 +267,9 @@ class YuMiTeleopHost:
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
-            # TODO: save recorded data
-            pass
+            self.syncer.pause()
+            recorded_data = self.syncer.flush()
+            self.logger.save_demo_data(self.recording_demo_name, self.demos[self.recording_demo_name]['path'], self.cfg_path, recorded_data)
 
     def t_standby(self, msg):
         if msg.req == "teleop_start":
@@ -282,9 +335,10 @@ class YuMiTeleopHost:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
     parser.add_argument('-c', '--config_path', type=str, default='cfg/host_config.yaml', help='path to config file')
+    parser.add_argument('-m', '--mode', type=str, default='record', help='either record or debug')
     args = parser.parse_args()
 
     cfg = YamlConfig(args.config_path)
 
-    yth = YuMiTeleopHost(cfg)
+    yth = YuMiTeleopHost(cfg, args.mode)
     yth.run()

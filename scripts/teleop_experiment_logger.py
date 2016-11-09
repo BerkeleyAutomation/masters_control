@@ -46,8 +46,7 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, setup_path, webcam_data, kinect_depth_data,
-                            kinect_color_data, motion_data):
+    def save_demo_data(self, demo_name, setup_path, config_path, data):
 
         last_demo_record = self.master_record.get_by_col_last('demo_name', demo_name)
         if last_demo_record == None:
@@ -62,21 +61,23 @@ class TeleopExperimentLogger(ExperimentLogger):
 
         # saving setup demo file
         self.copy_to_dir(setup_path, trial_dirs)
+        self.copy_to_dir(config_path, trial_dirs)
 
         # saving video
         fourcc = cv2.cv.CV_FOURCC(*'XVID')
         writer = cv2.VideoWriter(os.path.join(trial_path, 'video.avi'), fourcc, 30, tuple(webcam_data[0].shape))
-        for frame in webcam_data:
+        for frame in data['webcam']:
             writer.write(frame)
         writer.release()
 
         # saving visual data
-        dump(os.path.join(trial_path, "kinect_depth_data.jb"), kinect_depth_data, compress=3)
-        dump(os.path.join(trial_path, "kinect_color_data.jb"), kinect_color_data, compress=3)
-        dump(os.path.join(trial_path, "webcam_data.jb"), webcam_data, compress=3)
+        dump(os.path.join(trial_path, "kinect_data.jb"), data['kinect'], compress=3)
+        dump(os.path.join(trial_path, "webcam_data.jb"), data['webcam'], compress=3)
 
         # saving motion data
-        for side, data in motion_data:
+        for side, data in:
+            if not side.startswith('motion'):
+                continue
             self.construct_internal_dirs(trial_dirs + [side], realize=True)
             side_path = os.path.join(trial_path, side)
             for key, val in data:
