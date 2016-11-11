@@ -143,7 +143,11 @@ class YuMiTeleopHost:
         return res
 
     def run(self):
+        rospy.init_node("yumi_teleop_host")
+        rospy.loginfo("Init YuMiTeleopHost")
+
         # establishing data recording
+        rospy.loginfo("Setting up data streams...")
         self.datas = {}
 
         def kinect_gen():
@@ -188,22 +192,27 @@ class YuMiTeleopHost:
         ]
         self.syncer = DataStreamSyncer(all_datas, self.cfg['fps'])
         self.syncer.start()
+        rospy.loginfo("Waiting for initial flush...")
+        sleep(3)
+        self.syncer.flush()
         self.syncer.pause()
+        rospy.loginfo("Done!")
 
-        rospy.init_node("yumi_teleop_host")
-        rospy.loginfo("Init YuMiTeleopHost")
-
+        rospy.loginfo("Setting up yumi arm pollers...")
         for poller in self.pollers.values():
             poller.start()
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
+        rospy.loginfo("Done!")
 
+        rospy.loginfo("Setting up motion subscribers...")
         self.subs = {
             'left': rospy.Subscriber(_L_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['left'])),
             'right': rospy.Subscriber(_R_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['right'])),
         }
-        rospy.on_shutdown(self._shutdown_hook_gen())
+        rospy.loginfo("Done!")
 
+        rospy.on_shutdown(self._shutdown_hook_gen())
         self.cur_state = 'standby'
 
         rospy.loginfo("Waiting for Teleop Pose Service...")
@@ -212,7 +221,7 @@ class YuMiTeleopHost:
         rospy.loginfo("Established Teleop Post Service!")
 
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
-        rospy.loginfo("Serving UI Service...")
+        rospy.loginfo("All setup done! Serving UI Service...")
 
         rospy.spin()
 
