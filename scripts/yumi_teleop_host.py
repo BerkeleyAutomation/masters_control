@@ -5,7 +5,7 @@ as data recording for demonstrations.
 Author: Jacky Liang
 """
 from multiprocessing import Process, Queue
-import argparse
+import argparse, os, sys
 import rospy
 from geometry_msgs.msg import Pose
 from time import sleep
@@ -100,17 +100,29 @@ class YuMiTeleopHost:
         self.cfg = YamlConfig(self.cfg_path)
 
         if self.mode == 'recocrd':
-            self.logger = TeleopExperimentLogger(cfg['output_path'], cfg['supervisor'])
+            self.logger = TeleopExperimentLogger(self.cfg['output_path'], self.cfg['supervisor'])
 
         self.pollers = {
-            'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], cfg['z'], cfg['v'], 'left'),
-            'right': _YuMiArmPoller(self.qs['poses']['right'], self.qs['cmds']['right'], cfg['z'], cfg['v'], 'right'),
+            'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], self.cfg['z'], self.cfg['v'], 'left'),
+            'right': _YuMiArmPoller(self.qs['poses']['right'], self.qs['cmds']['right'], self.cfg['z'], self.cfg['v'], 'right'),
         }
 
-        # TODO: load actual demo names
-        demo_path = cfg['demo_path']
-        self._demo_names = ["demo1", "demo2", "demo3"]
-        self._recording_name = None
+        self.ysub = YuMiSubscriber()
+        self.ysub.start()
+
+        sys.path.append(self.cfg['demo_path'])
+        self._demos = {}
+        for filename in os.listdir(self.cfg['demo_path']):
+            if filename.endswith('demo.py'):
+                demo_module_name = filename[:-3]
+                exec("import {0}".format(demo_module_name))
+                exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
+                self._demos[demo_class.name] = {
+                    'filename': filename,
+                    'obj': demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
+                }
+        self._recording_demo_name = None
+        self._recording = False
 
     def _enqueue_pose_gen(self, q):
         def enqueue_pose(pose):
@@ -154,19 +166,16 @@ class YuMiTeleopHost:
             kinect = []
             def kinect_frames():
                 if not kinect:
-                    kinect[0] = Kinect2Sensor(packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL)
+                    kinect.append(Kinect2Sensor(packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL))
                     kinect[0].start()
                 return kinect[0].frames()
             return kinect_frames
-
-        self.ysub = YuMiSubscriber()
-        self.ysub.start()
 
         self.webcam = OpenCVCameraSensor(self.cfg['webcam'])
         self.webcam.start()
 
         self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen())
-        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam)
+        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames)
         self.datas['poses'] = {
             'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose),
             'right': DataStreamRecorder('motion_poses_right', self.ysub.right.get_pose)
@@ -190,12 +199,12 @@ class YuMiTeleopHost:
             self.datas['torques']['left'],
             self.datas['torques']['right']
         ]
-        self.syncer = DataStreamSyncer(all_datas, self.cfg['fps'])
+        self.syncer = DataStreamSyncer(self.all_datas, self.cfg['fps'])
         self.syncer.start()
         rospy.loginfo("Waiting for initial flush...")
         sleep(3)
-        self.syncer.flush()
         self.syncer.pause()
+        self.syncer.flush()
         rospy.loginfo("Done!")
 
         rospy.loginfo("Setting up yumi arm pollers...")
@@ -243,20 +252,18 @@ class YuMiTeleopHost:
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
     def _teleop_begin(self, demo_name=False):
-        record = demo_name is not None
-        if record:
-            self._recording_name = demo_name
-            '''
-            TODO:
-            - perform setup motions
-            '''
+        self._recording = demo_name is not None
+        if self._recording:
+            self._recording_demo_name = demo_name
+            self._demos[self._recording_demo_name]['obj'].setup()
+        else:
+            self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
+            self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
 
-        self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
-        self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
         sleep(3)
         self._reset_masters_yumi_connector()
 
-        if record:
+        if self._recording:
             self.syncer.resume(reset_time=True)
         self._set_poller_forwards(True)
 
@@ -273,12 +280,15 @@ class YuMiTeleopHost:
 
     def _teleop_finish(self):
         self._set_poller_forwards(False)
+        if self._recording:
+            self._demos[self._recording_demo_name]['obj'].takedown()
+            self._recording = False
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
             self.syncer.pause()
             recorded_data = self.syncer.flush()
-            self.logger.save_demo_data(self.recording_demo_name, self.demos[self.recording_demo_name]['path'], self.cfg_path, recorded_data)
+            self.logger.save_demo_data(self._recording_demo_name, self._demos[self._recording_demo_name]['filename'], self.cfg_path, recorded_data)
 
     def t_standby(self, msg):
         if msg.req == "teleop_start":
@@ -289,7 +299,7 @@ class YuMiTeleopHost:
             self._teleop_begin(demo_name)
             self.cur_state = 'teleop_record'
         elif msg.req == "list_demos":
-            res = repr(self._demo_names)
+            res = repr(self._demos.keys())
             return res
         return "ok"
 
@@ -347,7 +357,5 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--mode', type=str, default='record', help='either record or debug')
     args = parser.parse_args()
 
-    cfg = YamlConfig(args.config_path)
-
-    yth = YuMiTeleopHost(cfg, args.mode)
+    yth = YuMiTeleopHost(args.config_path, args.mode)
     yth.run()

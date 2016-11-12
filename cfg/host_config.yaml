@@ -1,0 +1,10 @@
+# config file for yumi_teleop_host
+v: 1500
+z: fine
+demo_path: demos/
+output_path: results/
+supervisor: Jacky
+fps: 10
+
+webcam: 0
+kinect: 0
