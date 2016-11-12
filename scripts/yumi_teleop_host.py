@@ -5,8 +5,7 @@ as data recording for demonstrations.
 Author: Jacky Liang
 """
 from multiprocessing import Process, Queue
-import argparse, os, sys
-import rospy
+import argparse, os, sys, logging, rospy
 from geometry_msgs.msg import Pose
 from time import sleep
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
@@ -37,6 +36,7 @@ class _YuMiArmPoller(Process):
         self.forward_poses = False
 
     def run(self):
+        logging.getLogger().setLevel(ymc.LOGGING_LEVEL)
         if self.arm_name == "left":
             self.y = YuMiRobot(include_right=False)
             self.arm = self.y.left
@@ -47,28 +47,34 @@ class _YuMiArmPoller(Process):
         self.y.set_z(self.z)
 
         while True:
-            if self.forward_poses and not self.pose_q.empty():
-                try:
-                    pose = self.pose_q.get()
-                    res = self.arm.goto_pose(pose, relative=True)
-                except Empty:
-                    pass
-            if not self.cmds_q.empty():
-                cmd = self.cmds_q.get()
-                if cmd[0] == 'forward':
-                    self.forward_poses = cmd[1]
-                elif cmd[0] == 'stop':
-                    break
-                elif cmd[0] == 'method':
-                    args = cmd[3]['args']
-                    kwargs = cmd[3]['kwargs']
-                    method_name = cmd[2]
-                    if cmd[1] == 'both':
-                        method = getattr(self.y, method_name)
-                    elif cmd[1] == 'single':
-                        method = getattr(self.arm, method_name)
-                    method(*args, **kwargs)
-            sleep(0.001)
+            try:
+                if self.forward_poses and not self.pose_q.empty():
+                    try:
+                        pose = self.pose_q.get()
+                        res = self.arm.goto_pose(pose, relative=True)
+                    except Empty:
+                        pass
+                if not self.cmds_q.empty():
+                    cmd = self.cmds_q.get()
+                    if cmd[0] == 'forward':
+                        self.forward_poses = cmd[1]
+                        if cmd[1]:
+                            self.y.set_v(self.v)
+                            self.y.set_z(self.z)
+                    elif cmd[0] == 'stop':
+                        break
+                    elif cmd[0] == 'method':
+                        args = cmd[3]['args']
+                        kwargs = cmd[3]['kwargs']
+                        method_name = cmd[2]
+                        if cmd[1] == 'both':
+                            method = getattr(self.y, method_name)
+                        elif cmd[1] == 'single':
+                            method = getattr(self.arm, method_name)
+                        method(*args, **kwargs)
+                sleep(0.001)
+            except KeyboardInterrupt:
+                logging.debug("Shutting down {0} arm poller".format(self.arm_name))
 
         self.y.stop()
 
@@ -99,30 +105,35 @@ class YuMiTeleopHost:
         self.cfg_path = cfg_path
         self.cfg = YamlConfig(self.cfg_path)
 
-        if self.mode == 'recocrd':
+        if self.mode == 'record':
             self.logger = TeleopExperimentLogger(self.cfg['output_path'], self.cfg['supervisor'])
 
         self.pollers = {
             'left': _YuMiArmPoller(self.qs['poses']['left'], self.qs['cmds']['left'], self.cfg['z'], self.cfg['v'], 'left'),
             'right': _YuMiArmPoller(self.qs['poses']['right'], self.qs['cmds']['right'], self.cfg['z'], self.cfg['v'], 'right'),
         }
+        for poller in self.pollers.values():
+            poller.start()
+        self._call_both_poller('reset_home')
+        self._call_both_poller('open_grippers')
 
         self.ysub = YuMiSubscriber()
         self.ysub.start()
 
-        sys.path.append(self.cfg['demo_path'])
+        self._recording_demo_name = None
+        self._recording = False
         self._demos = {}
+        sys.path.append(self.cfg['demo_path'])
         for filename in os.listdir(self.cfg['demo_path']):
             if filename.endswith('demo.py'):
                 demo_module_name = filename[:-3]
                 exec("import {0}".format(demo_module_name))
                 exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
-                self._demos[demo_class.name] = {
+                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
+                self._demos[demo_obj.name] = {
                     'filename': filename,
-                    'obj': demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
+                    'obj': demo_obj
                 }
-        self._recording_demo_name = None
-        self._recording = False
 
     def _enqueue_pose_gen(self, q):
         def enqueue_pose(pose):
@@ -207,13 +218,6 @@ class YuMiTeleopHost:
         self.syncer.flush()
         rospy.loginfo("Done!")
 
-        rospy.loginfo("Setting up yumi arm pollers...")
-        for poller in self.pollers.values():
-            poller.start()
-        self._call_both_poller('reset_home')
-        self._call_both_poller('open_grippers')
-        rospy.loginfo("Done!")
-
         rospy.loginfo("Setting up motion subscribers...")
         self.subs = {
             'left': rospy.Subscriber(_L_SUB, Pose, self._enqueue_pose_gen(self.qs['poses']['left'])),
@@ -227,7 +231,7 @@ class YuMiTeleopHost:
         rospy.loginfo("Waiting for Teleop Pose Service...")
         rospy.wait_for_service('masters_yumi_transform_reset_init_poses')
         self.init_pose_service = rospy.ServiceProxy('masters_yumi_transform_reset_init_poses', pose_str)
-        rospy.loginfo("Established Teleop Post Service!")
+        rospy.loginfo("Established Teleop Pose Service!")
 
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
         rospy.loginfo("All setup done! Serving UI Service...")
