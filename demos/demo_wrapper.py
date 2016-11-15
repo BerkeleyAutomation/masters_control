@@ -43,6 +43,9 @@ class _PseudoYuMiRobot:
     def open_grippers(self):
         self._call_both_poller('open_grippers')
 
+    def close_grippers(self):
+        self._call_both_poller('close_grippers')
+
     def set_v(self, n):
         self._call_both_poller('set_v', n)
 
