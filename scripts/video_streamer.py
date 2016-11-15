@@ -7,7 +7,7 @@ import rospy
 from cv_bridge import CvBridge
 from skimage.transform import rescale
 from sensor_msgs.msg import Image
-from perception import Kinect2Sensor, Kinect2PacketPipelineMode, OpencvCameraSensor
+from perception import Kinect2Sensor, Kinect2PacketPipelineMode, OpenCVCameraSensor
 import argparse
 
 _ROSTOPIC = 'sensor_{0}_{1}'
@@ -26,7 +26,7 @@ def publish_video(device_num, device_type, fps):
         if device_type.lower() == 'kinect':
             device = Kinect2Sensor(device_num=device_num, packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL)
         elif device_type.lower() == 'webcam':
-            device = OpencvCameraSensor(device_num)
+            device = OpenCVCameraSensor(device_num)
         else:
             raise ValueError("Unknown device type! Only takes kinect or webcam. Got: {0}".format(device_type))
 
