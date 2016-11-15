@@ -131,7 +131,7 @@ class YuMiTeleopHost:
                 exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
                 demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
                 self._demos[demo_obj.name] = {
-                    'filename': filename,
+                    'filename': os.path.join(self.cfg['demo_path'], filename),
                     'obj': demo_obj
                 }
 
@@ -153,7 +153,7 @@ class YuMiTeleopHost:
             for sub in self.subs.values():
                 sub.unregister()
             self.ysub.stop()
-            self.webcam.stop()
+            #self.webcam.stop()
             self.syncer.stop()
 
         return shutdown_hook
@@ -182,11 +182,14 @@ class YuMiTeleopHost:
                 return kinect[0].frames()
             return kinect_frames
 
+        '''
         self.webcam = OpenCVCameraSensor(self.cfg['webcam'])
         self.webcam.start()
+        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames)
+        '''
 
         self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen())
-        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames)
+
         self.datas['poses'] = {
             'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose),
             'right': DataStreamRecorder('motion_poses_right', self.ysub.right.get_pose)
@@ -202,7 +205,7 @@ class YuMiTeleopHost:
 
         self.all_datas = [
             self.datas['kinect'],
-            self.datas['webcam'],
+            #self.datas['webcam'],
             self.datas['poses']['left'],
             self.datas['poses']['right'],
             self.datas['states']['left'],
@@ -255,7 +258,7 @@ class YuMiTeleopHost:
     def _call_single_poller(self, arm_name, method_name, *args, **kwargs):
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
-    def _teleop_begin(self, demo_name=False):
+    def _teleop_begin(self, demo_name=None):
         self._recording = demo_name is not None
         if self._recording:
             self._recording_demo_name = demo_name
