@@ -16,6 +16,7 @@ from Queue import Empty
 from masters_control.srv import str_str, pose_str
 from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
+from motion_filter import IdentityFilter
 
 import IPython
 
@@ -34,6 +35,7 @@ class _YuMiArmPoller(Process):
         self.arm_name = arm_name
 
         self.forward_poses = False
+        self.filter = IdentityFilter()
 
     def run(self):
         logging.getLogger().setLevel(ymc.LOGGING_LEVEL)
@@ -51,7 +53,8 @@ class _YuMiArmPoller(Process):
                 if self.forward_poses and not self.pose_q.empty():
                     try:
                         pose = self.pose_q.get()
-                        res = self.arm.goto_pose(pose, relative=True)
+                        filtered_pose = self.filter.apply(pose)
+                        res = self.arm.goto_pose(filtered_pose, relative=True)
                     except Empty:
                         pass
                 if not self.cmds_q.empty():
@@ -59,10 +62,13 @@ class _YuMiArmPoller(Process):
                     if cmd[0] == 'forward':
                         self.forward_poses = cmd[1]
                         if cmd[1]:
+                            self.filter.reset()
                             self.y.set_v(self.v)
                             self.y.set_z(self.z)
                     elif cmd[0] == 'stop':
                         break
+                    elif cmd[0] == 'filter':
+                        self.filter = cmd[1]()
                     elif cmd[0] == 'method':
                         args = cmd[3]['args']
                         kwargs = cmd[3]['kwargs']
@@ -86,6 +92,9 @@ class _YuMiArmPoller(Process):
 
     def send_cmd(self, packet):
         self.cmds_q.put(packet)
+
+    def set_filter(self, Filter):
+        self.cmds_q.put(('filter', Filter))
 
 class YuMiTeleopHost:
 
@@ -129,7 +138,7 @@ class YuMiTeleopHost:
                 demo_module_name = filename[:-3]
                 exec("import {0}".format(demo_module_name))
                 exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
-                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
+                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub, self.set_filter)
                 self._demos[demo_obj.name] = {
                     'filename': os.path.join(self.cfg['demo_path'], filename),
                     'obj': demo_obj
@@ -157,6 +166,10 @@ class YuMiTeleopHost:
             self.syncer.stop()
 
         return shutdown_hook
+
+    def set_filter(self, Filter):
+        for poller in self.pollers.values():
+            poller.set_filter(Filter)
 
     def dispatcher(self, msg):
         rospy.loginfo("Rcv {0}".format(msg))

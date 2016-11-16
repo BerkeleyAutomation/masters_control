@@ -59,8 +59,9 @@ class DemoWrapper:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, both_poller, single_poller, sub):
+    def __init__(self, both_poller, single_poller, sub, set_filter):
         self.yumi = _PseudoYuMiRobot(both_poller, single_poller, sub)
+        self.set_filter = set_filter
 
     @abstractmethod # this is a property when implementing
     def name(self):
