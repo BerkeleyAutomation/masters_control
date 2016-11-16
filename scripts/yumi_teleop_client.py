@@ -12,6 +12,7 @@ from multiprocessing import Process, Queue
 from std_msgs.msg import Bool
 from masters_control.srv import str_str
 from util import str_str_service_wrapper
+from perception import OpenCVCameraSensor
 
 class UI(Process):
 
@@ -49,7 +50,10 @@ class UI(Process):
         return overlay
 
     def run(self):
-        self.cam = cv2.VideoCapture(self.cid)
+        self.cam1 = OpenCVCameraSensor(1)
+        self.cam1.start()
+        self.cam2 = OpenCVCameraSensor(2)
+        self.cam2.start()
 
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
@@ -58,7 +62,8 @@ class UI(Process):
         self.list_index = 0
         self.show_overlay = True
         while True:
-            _, frame = self.cam.read()
+            frame1 = self.cam1.frames().raw_data
+            frame2 = self.cam2.frames().raw_data
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
@@ -74,11 +79,13 @@ class UI(Process):
                     pedals_io = req[1]
 
             if self.show_overlay and len(self.list_view) > 0:
-                overlay = self.gen_list_view(frame)
-                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                overlay1 = self.gen_list_view(frame1)
+                overlay2 = self.gen_list_view(frame2)
+                cv2.addWeighted(overlay1, 0.7, frame1, 0.3, 0, frame1)
+                cv2.addWeighted(overlay2, 0.7, frame2, 0.3, 0, frame2)
 
-            cv2.imshow('left', frame)
-            cv2.imshow('right', frame)
+            cv2.imshow('left', frame1)
+            cv2.imshow('right', frame2)
 
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
@@ -94,7 +101,8 @@ class UI(Process):
             if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
-        self.cam.release()
+        self.cam1.stop()
+        self.cam2.stop()
         cv2.destroyAllWindows()
 
     def list_view(self, lst):
