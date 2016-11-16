@@ -54,7 +54,10 @@ class _YuMiArmPoller(Process):
                     try:
                         pose = self.pose_q.get()
                         filtered_pose = self.filter.apply(pose)
-                        res = self.arm.goto_pose(filtered_pose, relative=True)
+                        try:
+                            res = self.arm.goto_pose(filtered_pose, relative=True)
+                        except YuMiControlException:
+                            pass
                     except Empty:
                         pass
                 if not self.cmds_q.empty():
@@ -68,7 +71,7 @@ class _YuMiArmPoller(Process):
                     elif cmd[0] == 'stop':
                         break
                     elif cmd[0] == 'filter':
-                        self.filter = cmd[1]()
+                        self.filter = cmd[1]
                     elif cmd[0] == 'method':
                         args = cmd[3]['args']
                         kwargs = cmd[3]['kwargs']
@@ -93,8 +96,8 @@ class _YuMiArmPoller(Process):
     def send_cmd(self, packet):
         self.cmds_q.put(packet)
 
-    def set_filter(self, Filter):
-        self.cmds_q.put(('filter', Filter))
+    def set_filter(self, motion_filter):
+        self.cmds_q.put(('filter', motion_filter))
 
 class YuMiTeleopHost:
 
@@ -167,9 +170,9 @@ class YuMiTeleopHost:
 
         return shutdown_hook
 
-    def set_filter(self, Filter):
+    def set_filter(self, motion_filter):
         for poller in self.pollers.values():
-            poller.set_filter(Filter)
+            poller.set_filter(motion_filter)
 
     def dispatcher(self, msg):
         rospy.loginfo("Rcv {0}".format(msg))
