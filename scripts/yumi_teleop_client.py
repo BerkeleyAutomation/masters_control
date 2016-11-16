@@ -123,19 +123,19 @@ class UI(Process):
 class YuMiTeleopClient:
 
     def __init__(self, cid):
-        self.menu_main = ("Collect Demos", "Sandbox", "Quit")
-        self.menu_pause_teleop = ("Pause", "Finish")
-        self.menu_resume_teleop = ("Resume", "Finish")
-        self.menu_demo = None
-
-        self.ui = UI(cid)
-
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
         rospy.loginfo("Waiting for host ui service...")
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
         rospy.loginfo("UI Service established!")
+
+        self.menu_main = ("Collect Demos", "Sandbox", "Quit")
+        self.menu_pause_teleop = ("Pause", "Finish")
+        self.menu_resume_teleop = ("Resume", "Finish")
+        self.menu_demo = None
+
+        self.ui = UI(cid)
 
         self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))

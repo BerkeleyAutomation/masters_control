@@ -16,6 +16,7 @@ from Queue import Empty
 from masters_control.srv import str_str, pose_str
 from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
+from motion_filter import IdentityFilter
 
 import IPython
 
@@ -34,6 +35,7 @@ class _YuMiArmPoller(Process):
         self.arm_name = arm_name
 
         self.forward_poses = False
+        self.filter = IdentityFilter()
 
     def run(self):
         logging.getLogger().setLevel(ymc.LOGGING_LEVEL)
@@ -51,7 +53,11 @@ class _YuMiArmPoller(Process):
                 if self.forward_poses and not self.pose_q.empty():
                     try:
                         pose = self.pose_q.get()
-                        res = self.arm.goto_pose(pose, relative=True)
+                        filtered_pose = self.filter.apply(pose)
+                        try:
+                            res = self.arm.goto_pose(filtered_pose, relative=True)
+                        except YuMiControlException:
+                            pass
                     except Empty:
                         pass
                 if not self.cmds_q.empty():
@@ -59,10 +65,13 @@ class _YuMiArmPoller(Process):
                     if cmd[0] == 'forward':
                         self.forward_poses = cmd[1]
                         if cmd[1]:
+                            self.filter.reset()
                             self.y.set_v(self.v)
                             self.y.set_z(self.z)
                     elif cmd[0] == 'stop':
                         break
+                    elif cmd[0] == 'filter':
+                        self.filter = cmd[1]
                     elif cmd[0] == 'method':
                         args = cmd[3]['args']
                         kwargs = cmd[3]['kwargs']
@@ -86,6 +95,9 @@ class _YuMiArmPoller(Process):
 
     def send_cmd(self, packet):
         self.cmds_q.put(packet)
+
+    def set_filter(self, motion_filter):
+        self.cmds_q.put(('filter', motion_filter))
 
 class YuMiTeleopHost:
 
@@ -129,9 +141,9 @@ class YuMiTeleopHost:
                 demo_module_name = filename[:-3]
                 exec("import {0}".format(demo_module_name))
                 exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
-                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub)
+                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub, self.set_filter)
                 self._demos[demo_obj.name] = {
-                    'filename': filename,
+                    'filename': os.path.join(self.cfg['demo_path'], filename),
                     'obj': demo_obj
                 }
 
@@ -153,10 +165,14 @@ class YuMiTeleopHost:
             for sub in self.subs.values():
                 sub.unregister()
             self.ysub.stop()
-            self.webcam.stop()
+            #self.webcam.stop()
             self.syncer.stop()
 
         return shutdown_hook
+
+    def set_filter(self, motion_filter):
+        for poller in self.pollers.values():
+            poller.set_filter(motion_filter)
 
     def dispatcher(self, msg):
         rospy.loginfo("Rcv {0}".format(msg))
@@ -182,11 +198,14 @@ class YuMiTeleopHost:
                 return kinect[0].frames()
             return kinect_frames
 
+        '''
         self.webcam = OpenCVCameraSensor(self.cfg['webcam'])
         self.webcam.start()
+        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames)
+        '''
 
         self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen())
-        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames)
+
         self.datas['poses'] = {
             'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose),
             'right': DataStreamRecorder('motion_poses_right', self.ysub.right.get_pose)
@@ -202,7 +221,7 @@ class YuMiTeleopHost:
 
         self.all_datas = [
             self.datas['kinect'],
-            self.datas['webcam'],
+            #self.datas['webcam'],
             self.datas['poses']['left'],
             self.datas['poses']['right'],
             self.datas['states']['left'],
@@ -255,7 +274,7 @@ class YuMiTeleopHost:
     def _call_single_poller(self, arm_name, method_name, *args, **kwargs):
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
-    def _teleop_begin(self, demo_name=False):
+    def _teleop_begin(self, demo_name=None):
         self._recording = demo_name is not None
         if self._recording:
             self._recording_demo_name = demo_name
