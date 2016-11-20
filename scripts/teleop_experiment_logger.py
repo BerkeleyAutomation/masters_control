@@ -3,9 +3,11 @@ Experiment Logger class for teleop demonstrations
 Author: Jacky Liang
 """
 from core import ExperimentLogger, CSVModel
-import os
-from joblib import dump
-import cv2
+import os, cv2, logging
+from joblib import load
+from perception import write_video
+
+_LOGGING_LEVEL = logging.DEBUG
 
 class TeleopExperimentLogger(ExperimentLogger):
 
@@ -13,7 +15,6 @@ class TeleopExperimentLogger(ExperimentLogger):
             ('experiment_id','str'),
             ('demo_name','str'),
             ('trial_num', 'int'),
-            ('trial_duration','float'),
             ('path_trial','str')
         )
 
@@ -31,9 +32,6 @@ class TeleopExperimentLogger(ExperimentLogger):
         """
         return (
                 ('session_id','str'),
-                ('time_started','str'),
-                ('time_stopped','str'),
-                ('duration','float'),
                 ('supervisor','str'),
         )
 
@@ -46,7 +44,9 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, setup_path, config_path, data):
+    def save_demo_data(self, demo_name, setup_path, config_path, data_streamers, fps):
+
+        logging.getLogger().setLevel(_LOGGING_LEVEL)
         last_demo_record = self._demo_records_model.get_by_col_last('demo_name', demo_name)
         if last_demo_record == None:
             trial_num = 1
@@ -62,23 +62,25 @@ class TeleopExperimentLogger(ExperimentLogger):
         self.copy_to_dir(setup_path, trial_dirs)
         self.copy_to_dir(config_path, trial_dirs)
 
-        # saving video
-        '''
-        fourcc = cv2.cv.CV_FOURCC(*'XVID')
-        writer = cv2.VideoWriter(os.path.join(trial_path, 'video.avi'), fourcc, 30, tuple(data['webcam'][0].shape))
-        for frame in data['webcam']:
-            writer.write(frame)
-        writer.release()
-        '''
+        # callback to save video
+        def save_video():
+            webcam_data_path = os.path.join(trial_path, 'webcam.jb')
+            while not os.path.isfile(webcam_data_path):
+                sleep(1e-2)
+            webcam_data = load(webcam_data_path)
+            frames = [data[1] for data in webcam_data]
+            write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
 
         # saving all data
-        for key, val in data.items():
-            dump(val, os.path.join(trial_path, "data_{0}.jb".format(key)), compress=3)
+        for data_streamer in data_streamers:
+            if data_streamer.name == 'webcam':
+                data_streamer.save_data(trial_path, cb=save_video)
+            else:
+                data_streamer.save_data(trial_path)
 
         self._demo_records_model.insert({
             'experiment_id': self.id,
             'demo_name': demo_name,
             'trial_num': trial_num,
-            'trial_duration': data['kinect'][-1][0] - data['kinect'][0][0],
             'path_trial': trial_path,
         })

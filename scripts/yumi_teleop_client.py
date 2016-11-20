@@ -4,8 +4,7 @@ Script to be ran on the 'client' machine on a masters-YuMi teleop setup. Client
 machine is the computer connected to the masters' vision system.
 Author: Jacky Liang
 """
-import rospy
-import cv2
+import rospy, cv2, argparse
 import numpy as np
 from multiprocessing import Process, Queue
 
@@ -13,6 +12,7 @@ from std_msgs.msg import Bool
 from masters_control.srv import str_str
 from util import str_str_service_wrapper
 from perception import OpenCVCameraSensor
+from core import YamlConfig
 
 class UI(Process):
 
@@ -20,11 +20,16 @@ class UI(Process):
     TXT_COLOR = (0,0,0)
     HI_COLOR = (0,255,255)
 
-    def __init__(self, cid):
+    def __init__(self, cfg):
         Process.__init__(self)
         self.req_q = Queue()
         self.res_q = Queue()
-        self.cid = cid
+        self.cfg = cfg
+        self.debug = self.cfg['debug']
+        self.cids = []
+        for id, use in self.cfg['cams'].items():
+            if use:
+                self.cids.append(id)
 
     def gen_list_view(self, frame):
         overlay = frame.copy()
@@ -50,10 +55,13 @@ class UI(Process):
         return overlay
 
     def run(self):
-        self.cam1 = OpenCVCameraSensor(1)
-        self.cam1.start()
-        self.cam2 = OpenCVCameraSensor(2)
-        self.cam2.start()
+        if self.debug:
+            self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
+        else:
+            self.cams = {}
+            for cid in self.cids:
+                self.cams[cid] = OpenCVCameraSensor(cid)
+                self.cams[cid].start()
 
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
@@ -61,9 +69,14 @@ class UI(Process):
         self.list_view = []
         self.list_index = 0
         self.show_overlay = True
+
         while True:
-            frame1 = self.cam1.frames().raw_data
-            frame2 = self.cam2.frames().raw_data
+            if self.debug:
+                frame1 = self._black_frame.copy()
+                frame2 = self._black_frame.copy()
+            else:
+                frame1 = self.cams[self.cids[0]].frames().raw_data
+                frame2 = self.cams[self.cids[1]].frames().raw_data
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
@@ -101,8 +114,9 @@ class UI(Process):
             if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
-        self.cam1.stop()
-        self.cam2.stop()
+        if not self.debug:
+            for cam in self.cams.values():
+                cam.stop()
         cv2.destroyAllWindows()
 
     def list_view(self, lst):
@@ -122,7 +136,7 @@ class UI(Process):
 
 class YuMiTeleopClient:
 
-    def __init__(self, cid):
+    def __init__(self, cfg):
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
         rospy.loginfo("Waiting for host ui service...")
@@ -135,7 +149,7 @@ class YuMiTeleopClient:
         self.menu_resume_teleop = ("Resume", "Finish")
         self.menu_demo = None
 
-        self.ui = UI(cid)
+        self.ui = UI(cfg)
 
         self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
         self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
@@ -180,7 +194,7 @@ class YuMiTeleopClient:
         demo_names = eval(self.ui_service('list_demos'))
         self.menu_demo = tuple(demo_names) + ("Back",)
 
-        "A FSM to interact with the teleop interface"
+        # A FSM to interact with the teleop interface
         self.ui.start()
         self.cur_menu = self.menu_main
         self.cur_state = "standby"
@@ -229,6 +243,10 @@ class YuMiTeleopClient:
             return "standby", self.menu_main, True
 
 if __name__ == "__main__":
-    cid = 0
-    ytc = YuMiTeleopClient(cid)
+    parser = argparse.ArgumentParser(description='YuMi Teleop Client')
+    parser.add_argument('-c', '--config_path', type=str, default='cfg/client_config.yaml', help='path to config file')
+    args = parser.parse_args()
+
+    cfg = YamlConfig(args.config_path)
+    ytc = YuMiTeleopClient(cfg)
     ytc.run()

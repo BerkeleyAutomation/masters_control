@@ -1,10 +1,19 @@
 # config file for yumi_teleop_host
+debug: True
+
+# robot controls
 v: 1500
 z: fine
-demo_path: demos/
-output_path: results/
+
+# data collection
+record: True
 supervisor: Jacky
 fps: 10
+save_every: 50
+cache_path: /mnt/hdd/data/yumi_teleop/.cache
+demo_path: demos/
+output_path: /mnt/hdd/data/yumi_teleop/results
 
+# sensor devices
 webcam: 0
 kinect: 0
