@@ -1,0 +1,6 @@
+# config for yumi teleop client
+
+debug: True
+cams:
+  0: True
+  1: True
