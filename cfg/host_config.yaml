@@ -14,22 +14,9 @@ cache_path: /mnt/hdd/data/yumi_teleop/.cache
 demo_path: demos/
 output_path: /mnt/hdd/data/yumi_teleop/results
 data_srcs:
-  left:
-    poses: True
-    joints: True
-    torques: True
-  right:
-    poses: True
-    joints: True
-    torques: True
   webcam:
     use: False
     n: 0
   kinect:
-    depth: False
-    color: False
-
-
-# sensor devices
-webcam: 0
-kinect: 0
+    use: False
+    n: 0

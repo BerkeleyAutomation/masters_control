@@ -101,6 +101,9 @@ class MastersYuMiConnector:
             self.pub.publish(T_to_ros_pose(T_w_yc))
 
     def _clutch_callback(self, msg):
+        if not self.has_zeroed:
+            return
+            
         cluch_down = msg.data
 
         if cluch_down:

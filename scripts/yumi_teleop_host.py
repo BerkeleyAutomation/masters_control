@@ -187,23 +187,29 @@ class YuMiTeleopHost:
         # establishing data recording
         rospy.loginfo("Setting up data streams...")
         self.datas = {}
-
-        def kinect_gen():
-            kinect = []
-            def kinect_frames():
-                if not kinect:
-                    kinect.append(Kinect2Sensor(packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL))
-                    kinect[0].start()
-                return kinect[0].frames()[:2]
-            return kinect_frames
-
-        self.webcam = OpenCVCameraSensor(self.cfg['webcam'])
-        self.webcam.start()
+        self.all_datas = []
 
         cache_path, save_every = self.cfg['cache_path'], self.cfg['save_every']
 
-        self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames, cache_path=cache_path, save_every=save_every)
-        self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen(), cache_path=cache_path, save_every=save_every)
+        if self.cfg['data_srcs']['webcam']['use']:
+            self.webcam = OpenCVCameraSensor(self.cfg['data_srcs']['webcam']['n'])
+            self.webcam.start()
+            self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames, cache_path=cache_path, save_every=save_every)
+            self.all_datas.append(self.datas['webcam'])
+
+        if self.cfg['data_srcs']['kinect']['use']:
+            def kinect_gen():
+                kinect = []
+                def kinect_frames():
+                    if not kinect:
+                        kinect.append(Kinect2Sensor(device_num=self.cfg['data_srcs']['kinect']['n'],
+                                                    packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL))
+                        kinect[0].start()
+                    return kinect[0].frames()[:2]
+                return kinect_frames
+
+            self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen(), cache_path=cache_path, save_every=save_every)
+            self.all_datas.append(self.datas['kinect'])
 
         self.datas['poses'] = {
             'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose, cache_path=cache_path, save_every=save_every),
@@ -218,16 +224,14 @@ class YuMiTeleopHost:
             'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_pose, cache_path=cache_path, save_every=save_every)
         }
 
-        self.all_datas = [
-            self.datas['kinect'],
-            self.datas['webcam'],
+        self.all_datas.extend([
             self.datas['poses']['left'],
             self.datas['poses']['right'],
             self.datas['states']['left'],
             self.datas['states']['right'],
             self.datas['torques']['left'],
             self.datas['torques']['right']
-        ]
+        ])
 
         self.syncer = DataStreamSyncer(self.all_datas, self.cfg['fps'])
         self.syncer.start()
