@@ -65,6 +65,8 @@ class UI(Process):
 
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
+        self.debug_left = cv2.namedWindow("debug_left", cv2.cv.CV_WINDOW_NORMAL)
+        self.debug_right = cv2.namedWindow("debug_right", cv2.cv.CV_WINDOW_NORMAL)
 
         self.list_view = []
         self.list_index = 0
@@ -99,6 +101,8 @@ class UI(Process):
 
             cv2.imshow('left', frame1)
             cv2.imshow('right', frame2)
+            cv2.imshow('debug_left', frame1)
+            cv2.imshow('debug_right', frame2)
 
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
