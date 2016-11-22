@@ -13,6 +13,7 @@ from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
 from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
 from Queue import Empty
+from queue_events_sub import QueueEventsSub
 from masters_control.srv import str_str, pose_str
 from teleop_experiment_logger import TeleopExperimentLogger
 from util import T_to_ros_pose, ros_pose_to_T
@@ -224,7 +225,19 @@ class YuMiTeleopHost:
             'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_pose, cache_path=cache_path, save_every=save_every)
         }
 
+        self.grippers_bool = {
+            'left': QueueEventsSub(),
+            'right': QueueEventsSub()
+        }
+
+        self.datas['grippers_bool'] = {
+            'left': DataStreamRecorder('grippers_bool_left', self.grippers_bool['left'].get_event, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('grippers_bool_right', self.grippers_bool['right'].get_event, cache_path=cache_path, save_every=save_every)
+        }
+
         self.all_datas.extend([
+            self.datas['grippers_bool']['left'],
+            self.datas['grippers_bool']['right'],
             self.datas['poses']['left'],
             self.datas['poses']['right'],
             self.datas['states']['left'],
@@ -378,8 +391,10 @@ class YuMiTeleopHost:
         arm_name = cmd[0]
         if cmd[1]:
             self._call_single_poller(arm_name, 'close_gripper')
+            self.grippers_bool[arm_name].put_event('close_gripper')
         else:
             self._call_single_poller(arm_name, 'open_gripper')
+            self.grippers_bool[arm_name].put_event('open_gripper')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
