@@ -12,7 +12,7 @@ from time import time
 from masters_control.srv import pose_str
 
 from core import RigidTransform
-from util import T_to_ros_pose, ros_pose_to_T
+from yumi_teleop import T_to_ros_pose, ros_pose_to_T
 
 _T_MC_YCR = RigidTransform(rotation=[[0,-1,0],
                                         [1,0,0],
@@ -103,7 +103,7 @@ class MastersYuMiConnector:
     def _clutch_callback(self, msg):
         if not self.has_zeroed:
             return
-            
+
         cluch_down = msg.data
 
         if cluch_down:

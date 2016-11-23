@@ -8,16 +8,15 @@ from multiprocessing import Process, Queue
 import argparse, os, sys, logging, rospy
 from geometry_msgs.msg import Pose
 from time import sleep
+from Queue import Empty
+
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
 from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
-from Queue import Empty
-from queue_events_sub import QueueEventsSub
+
 from masters_control.srv import str_str, pose_str
-from teleop_experiment_logger import TeleopExperimentLogger
-from util import T_to_ros_pose, ros_pose_to_T
-from motion_filter import IdentityFilter
+from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter
 
 import IPython
 
@@ -135,15 +134,19 @@ class YuMiTeleopHost:
         self._recording_demo_name = None
         self._recording = False
         self._demos = {}
-        sys.path.append(self.cfg['demo_path'])
+
+        robot = {
+            'both_poller': self._call_both_poller,
+            'single_poller': self._call_single_poller,
+            'sub': self.ysub
+        }
+
         for filename in os.listdir(self.cfg['demo_path']):
             if filename.endswith('demo.py'):
-                demo_module_name = filename[:-3]
-                exec("import {0}".format(demo_module_name))
-                exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
-                demo_obj = demo_class(self._call_both_poller, self._call_single_poller, self.ysub, self.set_filter)
+                full_filename = os.path.join(self.cfg['demo_path'], filename)
+                demo_obj = load_demo_class(full_filename, robot, self.set_filter)
                 self._demos[demo_obj.name] = {
-                    'filename': os.path.join(self.cfg['demo_path'], filename),
+                    'filename', full_filename,
                     'obj': demo_obj
                 }
 

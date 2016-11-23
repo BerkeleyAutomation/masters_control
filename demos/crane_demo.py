@@ -2,9 +2,8 @@
 Crane demo file - YuMi arms are initialized in a crane-like pose
 Author: Jacky
 '''
-from demo_wrapper import DemoWrapper
 from yumipy import YuMiState
-from motion_filter import IdentityFilter, ProjectionFilter, TranslationPassFilter
+from yumi_teleop import DemoWrapper, IdentityFilter, MovingAverageFilter, TranslationPassFilter
 
 class TestDemo(DemoWrapper):
 

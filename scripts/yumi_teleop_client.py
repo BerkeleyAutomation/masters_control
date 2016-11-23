@@ -10,9 +10,10 @@ from multiprocessing import Process, Queue
 
 from std_msgs.msg import Bool
 from masters_control.srv import str_str
-from util import str_str_service_wrapper
 from perception import OpenCVCameraSensor
 from core import YamlConfig
+
+from yumi_teleop import str_str_service_wrapper
 
 class UI(Process):
 

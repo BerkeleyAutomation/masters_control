@@ -4,7 +4,7 @@ Authro: Jacky Liang
 '''
 from multiprocessing import Queue
 
-def QueueEventsSub:
+class QueueEventsSub:
 
     def __init__(self, maxsize=0):
         self._maxsize = maxsize
@@ -14,7 +14,7 @@ def QueueEventsSub:
         if self._q.qsize() == self._maxsize:
             self._q.get_nowait()
 
-        self._q.put(e):
+        self._q.put(e)
 
     def get_event(self):
         if self._q.qsize() == 0:

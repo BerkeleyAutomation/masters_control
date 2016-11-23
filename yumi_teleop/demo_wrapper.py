@@ -2,8 +2,10 @@
 Wrapper class for teleop demonstrations
 Author: Jacky
 """
-
+import os, sys
 from abc import ABCMeta, abstractmethod
+
+_NULL = lambda *args, **kwars: None
 
 class _PseudoYuMiArm:
 
@@ -59,8 +61,12 @@ class DemoWrapper:
 
     __metaclass__ = ABCMeta
 
-    def __init__(self, both_poller, single_poller, sub, set_filter):
-        self.yumi = _PseudoYuMiRobot(both_poller, single_poller, sub)
+    def __init__(self, robot, set_filter):
+        if isinstance(robot, dict):
+            self.yumi = _PseudoYuMiRobot(robot['both_poller'], robot['single_poller'], robot['sub'])
+        else:
+            self.yumi = robot
+
         self.set_filter = set_filter
 
     @abstractmethod # this is a property when implementing
@@ -74,3 +80,14 @@ class DemoWrapper:
     @abstractmethod
     def takedown(self):
         pass
+
+    @staticmethod
+    def load(filename, robot, set_filter=_NULL):
+        dirname, basename = os.path.dirname(filename), os.path.basename(filename)
+        sys.path.append(dirname)
+
+        demo_module_name = basename[:-3]
+        exec("import {0}".format(demo_module_name))
+        exec("demo_class = {0}.DEMO_CLASS".format(demo_module_name))
+        demo_obj = demo_class(robot, set_filter)
+        return demo_obj

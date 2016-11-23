@@ -1,0 +1,13 @@
+# config file for replaying trajectories
+
+# control settings
+v: 500
+z: z100
+mode: 'states' # can also be states
+
+# playback settings
+target_fps: 10
+subsample: 2
+
+# data settings
+data_path: /mnt/hdd/data/yumi_teleop/results
