@@ -16,7 +16,7 @@ from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
 from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
 
 from masters_control.srv import str_str, pose_str
-from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter
+from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter, DemoWrapper
 
 import IPython
 
@@ -144,7 +144,7 @@ class YuMiTeleopHost:
         for filename in os.listdir(self.cfg['demo_path']):
             if filename.endswith('demo.py'):
                 full_filename = os.path.join(self.cfg['demo_path'], filename)
-                demo_obj = load_demo_class(full_filename, robot, self.set_filter)
+                demo_obj = DemoWrapper.load(full_filename, robot, self.set_filter)
                 self._demos[demo_obj.name] = {
                     'filename', full_filename,
                     'obj': demo_obj
