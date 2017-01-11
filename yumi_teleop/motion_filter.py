@@ -63,7 +63,7 @@ class TranslationPassFilter(MotionFilter):
 
 class MovingAverageFilter(MotionFilter):
 
-    def __init__(self, alpha):
+    def __init__(self, alpha=0.5):
         self.prev_pose = None
         self.alpha = alpha
 

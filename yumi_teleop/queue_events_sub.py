@@ -11,7 +11,7 @@ class QueueEventsSub:
         self._q = Queue(maxsize=maxsize)
 
     def put_event(self, e):
-        if self._q.qsize() == self._maxsize:
+        if self._q.qsize() == self._maxsize and self._maxsize != 0:
             self._q.get_nowait()
 
         self._q.put(e)

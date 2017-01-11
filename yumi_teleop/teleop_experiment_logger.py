@@ -11,32 +11,33 @@ _LOGGING_LEVEL = logging.DEBUG
 
 class TeleopExperimentLogger(ExperimentLogger):
 
-    RECORDS_HEADERS_TYPES = (
+    RECORDS_HEADERS_TYPES = [
             ('experiment_id','str'),
             ('demo_name','str'),
+            ('supervisor', 'str'),
             ('trial_num', 'int'),
-            ('path_trial','str')
-        )
+            ('trial_path','str'),
+        ]
 
     def __init__(self, experiment_root_path, supervisor):
         self.supervisor = supervisor
-        super(TeleopExperimentLogger, self).__init__(experiment_root_path)
+        super(TeleopExperimentLogger, self).__init__(experiment_root_path, sub_experiment_dirs=False)
 
         demo_records_model_path = os.path.join(self.experiment_root_path, 'demo_records.csv')
         self._demo_records_model = CSVModel.get_or_create(demo_records_model_path, TeleopExperimentLogger.RECORDS_HEADERS_TYPES)
 
     @property
-    def experiment_meta_headers_types(self):
-        """:obj:`tuple` of :obj:`tuple` of :obj:`str` : A tuple of tuples, each
+    def experiment_meta_headers(self):
+        """:obj:`tuple` of :obj:`tuple` of :obj:`str` : A list of tuples, each
         of which maps string header names to string type names.
         """
-        return (
+        return [
                 ('session_id','str'),
                 ('supervisor','str'),
-        )
+        ]
 
     @property
-    def experiment_meta_dict(self):
+    def experiment_meta_data(self):
         """:obj:`dict` : The metadata of the experiment as a dictionary.
         """
         return {
@@ -44,22 +45,24 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, setup_path, config_path, data_streamers, fps):
-
+    def save_demo_data(self, demo_name, supervisor, demo_path, config_path, data_streamers, fps):
         logging.getLogger().setLevel(_LOGGING_LEVEL)
-        last_demo_record = self._demo_records_model.get_by_col_last('demo_name', demo_name)
+        last_demo_record = self._demo_records_model.get_by_cols({
+                                                                'demo_name': demo_name,
+                                                                'supervisor': supervisor
+                                                                }, direction=-1)
         if last_demo_record == None:
             trial_num = 1
         else:
             trial_num = last_demo_record['trial_num'] + 1
 
         trial_num_str = str(trial_num)
-        trial_dirs = [demo_name, trial_num_str]
+        trial_dirs = [supervisor, demo_name, trial_num_str]
         self.construct_internal_dirs(trial_dirs, realize=True)
         trial_path = self.dirs_to_path(trial_dirs)
 
         # saving setup demo file
-        self.copy_to_dir(setup_path, trial_dirs)
+        self.copy_to_dir(demo_path, trial_dirs)
         self.copy_to_dir(config_path, trial_dirs)
 
         # callback to save video
@@ -81,6 +84,7 @@ class TeleopExperimentLogger(ExperimentLogger):
         self._demo_records_model.insert({
             'experiment_id': self.id,
             'demo_name': demo_name,
+            'supervisor': supervisor,
             'trial_num': trial_num,
-            'path_trial': trial_path,
+            'trial_path': trial_path,
         })
