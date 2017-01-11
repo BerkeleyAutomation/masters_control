@@ -45,7 +45,7 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, supervisor, demo_path, config_path, data_streamers, fps):
+    def save_demo_data(self, demo_name, supervisor, save_file_paths, data_streamers, fps):
         logging.getLogger().setLevel(_LOGGING_LEVEL)
         last_demo_record = self._demo_records_model.get_by_cols({
                                                                 'demo_name': demo_name,
@@ -61,9 +61,9 @@ class TeleopExperimentLogger(ExperimentLogger):
         self.construct_internal_dirs(trial_dirs, realize=True)
         trial_path = self.dirs_to_path(trial_dirs)
 
-        # saving setup demo file
-        self.copy_to_dir(demo_path, trial_dirs)
-        self.copy_to_dir(config_path, trial_dirs)
+        # saving files
+        for path in save_file_paths:
+            self.copy_to_dir(path, trial_dirs)
 
         # callback to save video
         def save_video():

@@ -16,7 +16,9 @@ output_path: /mnt/hdd/data/yumi_teleop/results
 data_srcs:
   webcam:
     use: False
+    T_path: '/home/autolab/Public/alan/calib/webcam_overhead/webcam_overhead_to_world.tf'
     n: 0
   kinect:
     use: False
+    T_path: '/home/autolab/Public/alan/calib/kinect2_overhead/kinect2_overhead_to_world.tf'
     n: 0

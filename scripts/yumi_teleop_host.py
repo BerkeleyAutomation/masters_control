@@ -116,6 +116,8 @@ class YuMiTeleopHost:
         self.cfg_path = cfg_path
         self.cfg = YamlConfig(self.cfg_path)
 
+        self.save_file_paths = [self.cfg_path]
+
         if self.cfg['record']:
             self.logger = TeleopExperimentLogger(self.cfg['output_path'], self.cfg['supervisor'])
 
@@ -200,6 +202,7 @@ class YuMiTeleopHost:
             self.webcam.start()
             self.datas['webcam'] = DataStreamRecorder('webcam', self.webcam.frames, cache_path=cache_path, save_every=save_every)
             self.all_datas.append(self.datas['webcam'])
+            self.save_file_paths.append(self.cfg['data_srcs']['webcam']['T_path'])
 
         if self.cfg['data_srcs']['kinect']['use']:
             def kinect_gen():
@@ -214,6 +217,7 @@ class YuMiTeleopHost:
 
             self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen(), cache_path=cache_path, save_every=save_every)
             self.all_datas.append(self.datas['kinect'])
+            self.save_file_paths.append(self.cfg['data_srcs']['kinect']['T_path'])
 
         self.datas['poses'] = {
             'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose, cache_path=cache_path, save_every=save_every),
@@ -334,7 +338,12 @@ class YuMiTeleopHost:
         self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
             self.syncer.pause()
-            self.logger.save_demo_data(self._recording_demo_name, self._demos[self._recording_demo_name]['filename'], self.cfg_path, self.all_datas, self.cfg['fps'])
+            self.logger.save_demo_data(self._recording_demo_name,
+                                        self.cfg['supervisor'],
+                                        self.save_file_paths + [self._demos[self._recording_demo_name]['filename']],
+                                        self.all_datas,
+                                        self.cfg['fps']
+                                        )
 
     def t_standby(self, msg):
         if msg.req == "teleop_start":

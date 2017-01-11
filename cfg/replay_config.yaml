@@ -3,7 +3,7 @@
 # control settings
 v: 500
 z: z100
-mode: 'states' # can also be states
+mode: 'states' # can also be poses
 
 # playback settings
 target_fps: 20
