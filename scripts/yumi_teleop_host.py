@@ -401,7 +401,7 @@ class YuMiTeleopHost:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
-    parser.add_argument('-c', '--config_path', type=str, default='cfg/host_config.yaml', help='path to config file')
+    parser.add_argument('-c', '--config_path', type=str, default='cfg/demo_config.yaml', help='path to config file')
     args = parser.parse_args()
 
     yth = YuMiTeleopHost(args.config_path)

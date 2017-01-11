@@ -6,8 +6,8 @@ z: z100
 mode: 'states' # can also be states
 
 # playback settings
-target_fps: 10
-subsample: 2
+target_fps: 20
+subsample: 1
 
 # data settings
-data_path: /mnt/hdd/data/yumi_teleop/results
+data_path: /mnt/hdd/data/yumi_flexpendant/ #/mnt/hdd/data/yumi_teleop/, /mnt/hdd/data/yumi_kinesthetics

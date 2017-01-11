@@ -7,7 +7,7 @@ from joblib import load
 
 from core import YamlConfig, CSVModel
 from yumipy import YuMiRobot
-from yumi_teleop import load_demo_class, Trajectory
+from yumi_teleop import DemoWrapper, Trajectory
 from time import sleep
 
 import IPython
@@ -15,6 +15,7 @@ import IPython
 def playback(args):
     cfg = YamlConfig(args.config_path)
     demo_name = args.demo_name
+    supervisor = args.supervisor
     trial_num = args.trial_num
 
     if cfg['mode'] not in ('poses', 'states'):
@@ -31,18 +32,21 @@ def playback(args):
     demo_records = CSVModel.load(os.path.join(cfg['data_path'], 'demo_records.csv'))
     demo_record = demo_records.get_by_cols({
         'demo_name': demo_name,
-        'trial_num': trial_num
+        'trial_num': trial_num,
+        'supervisor': supervisor
     })
-    path_trial = demo_record['path_trial']
-    demo_host_cfg = YamlConfig(os.path.join(path_trial, 'host_config.yaml'))
+    trial_path = demo_record['trial_path']
+    demo_host_cfg = YamlConfig(os.path.join(trial_path, 'demo_config.yaml'))
 
     # parse demo trajectory
     # TODO: gripper events
     # TODO: enforce fps
 
     fps = demo_host_cfg['fps']
-    times, left_data = zip(*load(os.path.join(path_trial, 'motion_{0}_left.jb'.format(cfg['mode']))))
-    _, right_data = zip(*load(os.path.join(path_trial, 'motion_{0}_right.jb'.format(cfg['mode']))))
+    times, left_data = zip(*load(os.path.join(trial_path, '{0}_left.jb'.format(cfg['mode']))))
+    _, right_data = zip(*load(os.path.join(trial_path, '{0}_right.jb'.format(cfg['mode']))))
+    _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
+    _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
 
     traj = Trajectory(times, zip(left_data, right_data))
     subsampled_traj = traj.subsampler(cfg['subsample'])
@@ -51,8 +55,8 @@ def playback(args):
     logging.info("Loading demo and performing setups.")
     y.reset_home()
     y.open_grippers()
-    demo_path = os.path.join(path_trial, '{0}.py'.format(demo_name))
-    demo_obj = load_demo_class(demo_path, y)
+    demo_path = os.path.join(trial_path, '{0}.py'.format(demo_name))
+    demo_obj = DemoWrapper.load(demo_path, y)
     demo_obj.setup()
 
     # perform trajectory
@@ -78,7 +82,8 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
     parser.add_argument("demo_name", type=str, help='name of demo')
-    parser.add_argument("trial_num", type=int, help='trial num of demo')
+    parser.add_argument("supervisor", type=str, help='name of supervisor')
+    parser.add_argument("trial_num", type=int, help='trial num')
     parser.add_argument('-c', '--config_path', type=str, default='cfg/replay_config.yaml', help='path to config file')
 
     args = parser.parse_args()

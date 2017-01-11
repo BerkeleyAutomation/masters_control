@@ -11,7 +11,7 @@ supervisor: Jacky
 fps: 10
 save_every: 50
 cache_path: /mnt/hdd/data/yumi_teleop/.cache
-demo_path: demos/
+demo_path: /mnt/hdd/data/experiment_demos/
 output_path: /mnt/hdd/data/yumi_teleop/results
 data_srcs:
   webcam:
