@@ -7,7 +7,7 @@ from joblib import load
 
 from core import YamlConfig, CSVModel
 from yumipy import YuMiRobot
-from yumi_teleop import DemoWrapper, Trajectory
+from yumi_teleop import DemoWrapper, Sequence
 from time import sleep
 
 import IPython
@@ -39,7 +39,6 @@ def playback(args):
     demo_host_cfg = YamlConfig(os.path.join(trial_path, 'demo_config.yaml'))
 
     # parse demo trajectory
-    # TODO: gripper events
     # TODO: enforce fps
 
     fps = demo_host_cfg['fps']
@@ -48,8 +47,25 @@ def playback(args):
     _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
     _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
 
-    traj = Trajectory(times, zip(left_data, right_data))
-    subsampled_traj = traj.subsampler(cfg['subsample'])
+    sequences = {
+        'times': Sequence(times),
+        'left': Sequence(left_data),
+        'right': Sequence(right_data),
+        'gripper_left': Sequence(gripper_left_evs),
+        'gripper_right': Sequence(gripper_right_evs)
+    }
+
+    subsample_factor = cfg['subsample']
+    subsampled_sequences = {
+        'times': sequences['times'].subsampler(subsample_factor),
+        'left': sequences['left'].subsampler(subsample_factor),
+        'right': sequences['right'].subsampler(subsample_factor),
+        'gripper_left': sequences['gripper_left'].subsampler(subsample_factor, retain_features=True),
+        'gripper_right': sequences['gripper_right'].subsampler(subsample_factor, retain_features=True)
+    }
+
+    IPython.embed()
+    exit(0)
 
     # perform setup motions
     logging.info("Loading demo and performing setups.")
@@ -61,13 +77,26 @@ def playback(args):
 
     # perform trajectory
     logging.info("Playing trajectory")
-    for data in subsampled_traj:
+    for t in range(min([len(seq.data) for seq in subsampled_sequences.values()])):
+        left_item = subsampled_sequences['left'].data[t][1]
+        right_item = subsampled_sequences['right'].data[t][1]
+        gripper_left_item = subsampled_sequences['gripper_left'].data[t]
+        gripper_right_item = subsampled_sequences['gripper_right'].data[t]
+
         if cfg['mode'] == 'poses':
-            y.left.goto_pose(data[0][1], relative=True, wait_for_res=False)
-            y.right.goto_pose(data[1][1], relative=True, wait_for_res=True)
+            y.left.goto_pose(left_item, relative=True, wait_for_res=False)
+            y.right.goto_pose(right_item, relative=True, wait_for_res=True)
         else:
-            y.left.goto_state(data[0][1], wait_for_res=False)
-            y.right.goto_state(data[1][1], wait_for_res=True)
+            y.left.goto_state(left_item, wait_for_res=False)
+            y.right.goto_state(right_item, wait_for_res=True)
+
+        if gripper_left_item != None and gripper_right_item != None:
+            getattr(y.left, gripper_left_item)(wait_for_res=False)
+            getattr(y.right, gripper_right_item)(wait_for_res=True)
+        elif gripper_left_item != None:
+            getattr(y.left, gripper_left_item)()
+        elif gripper_right_item != None:
+            getattr(y.right, gripper_right_item)()
 
     # perform takedown motions
     logging.info("Taking down..")
@@ -79,7 +108,7 @@ def playback(args):
     y.stop()
 
 if __name__ == '__main__':
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
     parser.add_argument("demo_name", type=str, help='name of demo')
     parser.add_argument("supervisor", type=str, help='name of supervisor')

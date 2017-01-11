@@ -7,8 +7,6 @@ import os, cv2, logging
 from joblib import load
 from perception import write_video
 
-_LOGGING_LEVEL = logging.DEBUG
-
 class TeleopExperimentLogger(ExperimentLogger):
 
     RECORDS_HEADERS_TYPES = [
@@ -46,7 +44,6 @@ class TeleopExperimentLogger(ExperimentLogger):
                 }
 
     def save_demo_data(self, demo_name, supervisor, save_file_paths, data_streamers, fps):
-        logging.getLogger().setLevel(_LOGGING_LEVEL)
         last_demo_record = self._demo_records_model.get_by_cols({
                                                                 'demo_name': demo_name,
                                                                 'supervisor': supervisor
@@ -60,6 +57,8 @@ class TeleopExperimentLogger(ExperimentLogger):
         trial_dirs = [supervisor, demo_name, trial_num_str]
         self.construct_internal_dirs(trial_dirs, realize=True)
         trial_path = self.dirs_to_path(trial_dirs)
+
+        logging.info("Saving data to {0}".format(trial_path))
 
         # saving files
         for path in save_file_paths:
