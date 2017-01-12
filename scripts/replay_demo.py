@@ -64,8 +64,18 @@ def playback(args):
         'gripper_right': sequences['gripper_right'].subsampler(subsample_factor, retain_features=True)
     }
 
-    IPython.embed()
-    exit(0)
+    N = min([len(seq.data) for seq in subsampled_sequences.values()])
+
+    # processing time steps where zoning should be set to fine
+    gripper_zoning = [None for _ in range(N)]
+    for t in range(N-1):
+        if subsampled_sequences['gripper_left'].data[t] != None or \
+            subsampled_sequences['gripper_right'].data[t] != None:
+            if t == 0:
+                y.set_z('fine')
+            else:
+                gripper_zoning[t-1] = 'fine'
+            gripper_zoning[t+1] = cfg['z']
 
     # perform setup motions
     logging.info("Loading demo and performing setups.")
@@ -77,7 +87,7 @@ def playback(args):
 
     # perform trajectory
     logging.info("Playing trajectory")
-    for t in range(min([len(seq.data) for seq in subsampled_sequences.values()])):
+    for t in range(N):
         left_item = subsampled_sequences['left'].data[t][1]
         right_item = subsampled_sequences['right'].data[t][1]
         gripper_left_item = subsampled_sequences['gripper_left'].data[t]
@@ -98,8 +108,15 @@ def playback(args):
         elif gripper_right_item != None:
             getattr(y.right, gripper_right_item)()
 
+        z = gripper_zoning[t]
+        if z is not None:
+            logging.info("Setting zone to {0}".format(z))
+            y.set_z(z)
+
     # perform takedown motions
     logging.info("Taking down..")
+    y.set_v(cfg['v'])
+    y.set_z(cfg['z'])
     demo_obj.takedown()
 
     y.reset_home()
