@@ -45,7 +45,7 @@ def playback(args):
     times, left_data = zip(*load(os.path.join(trial_path, '{0}_left.jb'.format(cfg['mode']))))
     _, right_data = zip(*load(os.path.join(trial_path, '{0}_right.jb'.format(cfg['mode']))))
     _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
-    _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
+    _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_right.jb')))
 
     sequences = {
         'times': Sequence(times),
