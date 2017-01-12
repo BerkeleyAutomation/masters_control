@@ -66,6 +66,7 @@ class TeleopExperimentLogger(ExperimentLogger):
 
         # callback to save video
         def save_video():
+            logging.info("Saving video...")
             webcam_data_path = os.path.join(trial_path, 'webcam.jb')
             while not os.path.isfile(webcam_data_path):
                 sleep(1e-2)
