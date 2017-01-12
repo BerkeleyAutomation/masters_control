@@ -228,8 +228,8 @@ class YuMiTeleopHost:
             'right': DataStreamRecorder('motion_states_right', self.ysub.right.get_state, cache_path=cache_path, save_every=save_every)
         }
         self.datas['torques'] = {
-            'left': DataStreamRecorder('motion_torques_left', self.ysub.left.get_pose, cache_path=cache_path, save_every=save_every),
-            'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_pose, cache_path=cache_path, save_every=save_every)
+            'left': DataStreamRecorder('motion_torques_left', self.ysub.left.get_torque, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_torque, cache_path=cache_path, save_every=save_every)
         }
 
         self.grippers_bool = {

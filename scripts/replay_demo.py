@@ -5,8 +5,8 @@ Author: Jacky
 import argparse, logging, os
 from joblib import load
 
-from core import YamlConfig, CSVModel
-from yumipy import YuMiRobot
+from core import YamlConfig, CSVModel, DataStreamSyncer, DataStreamRecorder
+from yumipy import YuMiRobot, YuMiSubscriber
 from yumi_teleop import DemoWrapper, Sequence
 from time import sleep
 
@@ -40,15 +40,14 @@ def playback(args):
 
     # parse demo trajectory
     # TODO: enforce fps
-
     fps = demo_host_cfg['fps']
-    times, left_data = zip(*load(os.path.join(trial_path, '{0}_left.jb'.format(cfg['mode']))))
+
+    _, left_data = zip(*load(os.path.join(trial_path, '{0}_left.jb'.format(cfg['mode']))))
     _, right_data = zip(*load(os.path.join(trial_path, '{0}_right.jb'.format(cfg['mode']))))
     _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
     _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_right.jb')))
 
     sequences = {
-        'times': Sequence(times),
         'left': Sequence(left_data),
         'right': Sequence(right_data),
         'gripper_left': Sequence(gripper_left_evs),
@@ -57,14 +56,13 @@ def playback(args):
 
     subsample_factor = cfg['subsample']
     subsampled_sequences = {
-        'times': sequences['times'].subsampler(subsample_factor),
         'left': sequences['left'].subsampler(subsample_factor),
         'right': sequences['right'].subsampler(subsample_factor),
         'gripper_left': sequences['gripper_left'].subsampler(subsample_factor, retain_features=True),
         'gripper_right': sequences['gripper_right'].subsampler(subsample_factor, retain_features=True)
     }
 
-    N = min([len(seq.data) for seq in subsampled_sequences.values()])
+    N = min([len(seq.data) for seq in subsampled_sequences.values()]) # avoids 1-off errors
 
     # processing time steps where zoning should be set to fine
     gripper_zoning = [None for _ in range(N)]
@@ -84,6 +82,44 @@ def playback(args):
     demo_path = os.path.join(trial_path, '{0}.py'.format(demo_name))
     demo_obj = DemoWrapper.load(demo_path, y)
     demo_obj.setup()
+
+    # record torque and other debug data if needed
+    if cfg['record_torque']['use']:
+        ysub = YuMiSubscriber()
+        ysub.start()
+        data_torque_left = DataStreamRecorder('torques_left', ysub.left.get_torque, cache_path=cfg['cache_path'], save_every=cfg['save_every'])
+        data_torque_right = DataStreamRecorder('torques_right', ysub.right.get_torque, cache_path=cfg['cache_path'], save_every=cfg['save_every'])
+        syncer = DataStreamSyncer([data_torque_left, data_torque_right], fps)
+        syncer.start()
+        sleep(0.5)
+        syncer.pause()
+        syncer.flush()
+        syncer.resume(reset_time=True)
+
+        torque_model = CSVModel.get_or_create(
+            os.path.join(cfg['data_path'], 'playback_torques_record.csv'),
+            [
+                ('supervisor', 'str'),
+                ('demo_name', 'str'),
+                ('trial_num', 'int'),
+                ('playback_num', 'int'),
+                ('playback_path', 'str')
+            ]
+        )
+
+        last_torque_record = torque_model.get_by_cols({
+                                                    'demo_name': demo_name,
+                                                    'trial_num': trial_num,
+                                                    'supervisor': supervisor
+                                                }, direction=-1)
+        if last_torque_record == None:
+            playback_num = 1
+        else:
+            playback_num = last_torque_record['playback_num'] + 1
+
+        playback_path = os.path.join(trial_path, 'playback_torques')
+        if not os.path.exists(playback_path):
+            os.makedirs(playback_path)
 
     # perform trajectory
     logging.info("Playing trajectory")
@@ -112,6 +148,23 @@ def playback(args):
         if z is not None:
             logging.info("Setting zone to {0}".format(z))
             y.set_z(z)
+
+    if cfg['record_torque']['use']:
+        syncer.pause()
+
+        data_torque_left.save_data(playback_path)
+        data_torque_right.save_data(playback_path)
+
+        torque_model.insert({
+            'supervisor': supervisor,
+            'demo_name': demo_name,
+            'trial_num': trial_num,
+            'playback_num': playback_num,
+            'playback_path': playback_path
+        })
+
+        ysub.stop()
+        syncer.stop()
 
     # perform takedown motions
     logging.info("Taking down..")
