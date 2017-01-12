@@ -72,13 +72,16 @@ class TeleopExperimentLogger(ExperimentLogger):
             webcam_data = load(webcam_data_path)
             frames = [data[1] for data in webcam_data]
             write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
+            logging.info("Finished saving video!")
 
         # saving all data
+        def notify_complete(name):
+            return lambda : logging.info("Finished saving {0}".format(name))
         for data_streamer in data_streamers:
             if data_streamer.name == 'webcam':
                 data_streamer.save_data(trial_path, cb=save_video)
             else:
-                data_streamer.save_data(trial_path)
+                data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name))
 
         self._demo_records_model.insert({
             'experiment_id': self.id,
