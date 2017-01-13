@@ -67,7 +67,7 @@ class TeleopExperimentLogger(ExperimentLogger):
 
         # callback to save video
         def save_video():
-            _ = requests.get("http://localhost:{0}/save_video?trial_path={1}&fps={2}".format(VIDEO_SERVICE_PORT, trial_path, fps))
+            _ = requests.get("http://localhost:{0}/render_video?trial_path={1}&fps={2}".format(VIDEO_SERVICE_PORT, trial_path, fps))
             logging.info("Finished sending request to render video.")
 
         # saving all data
