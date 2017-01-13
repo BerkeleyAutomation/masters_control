@@ -2,10 +2,11 @@
 Experiment Logger class for teleop demonstrations
 Author: Jacky Liang
 """
-from core import ExperimentLogger, CSVModel
 import os, cv2, logging
-from joblib import load
-from perception import write_video
+from time import sleep, time
+import requests
+from core import ExperimentLogger, CSVModel
+from constants import VIDEO_SERVICE_PORT
 
 class TeleopExperimentLogger(ExperimentLogger):
 
@@ -66,21 +67,15 @@ class TeleopExperimentLogger(ExperimentLogger):
 
         # callback to save video
         def save_video():
-            logging.info("Saving video...")
-            webcam_data_path = os.path.join(trial_path, 'webcam.jb')
-            while not os.path.isfile(webcam_data_path):
-                sleep(1e-2)
-            webcam_data = load(webcam_data_path)
-            frames = [data[1] for data in webcam_data]
-            write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
-            logging.info("Finished saving video!")
+            _ = requests.get("http://localhost:{0}/save_video?trial_path={1}&fps={2}".format(VIDEO_SERVICE_PORT, trial_path, fps))
+            logging.info("Finished sending request to render video.")
 
         # saving all data
         def notify_complete(name):
             return lambda : logging.info("Finished saving {0}".format(name))
         for data_streamer in data_streamers:
             if data_streamer.name == 'webcam':
-                data_streamer.save_data(trial_path, cb=save_video)
+                data_streamer.save_data(trial_path, cb=save_video, concat=False)
             else:
                 data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name))
 
