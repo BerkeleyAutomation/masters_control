@@ -165,7 +165,12 @@ class YuMiTeleopClient:
         self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
+        self.cur_state = None
 
+        self.last_gripper_widths = {
+              'right': None,
+              'left': None
+            }
 
         if self.cfg['grippers'] == 'binary':
             self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
@@ -201,6 +206,13 @@ class YuMiTeleopClient:
     def _gripper_callback_gen(self, arm_name):
         def callback(gripper_ev):
             if self.cur_state == "teleop" and not self._clutch_down:
+                
+                if self.cfg['grippers'] == 'continuous':
+                    if self.last_gripper_widths[arm_name] is None:
+                        self.last_gripper_widths[arm_name] = gripper_ev.data
+                    if abs(gripper_ev.data - self.last_gripper_widths[arm_name]) < 0.1:
+                        return
+                
                 self.ui_service("gripper", "('{0}','{1}', {2})".format(arm_name, self.cfg['grippers'], gripper_ev.data))
         return callback
 
