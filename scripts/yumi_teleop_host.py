@@ -38,7 +38,6 @@ class _YuMiArmPoller(Process):
         self.filter = IdentityFilter()
 
     def run(self):
-        logging.getLogger().setLevel(ymc.LOGGING_LEVEL)
         if self.arm_name == "left":
             self.y = YuMiRobot(include_right=False)
             self.arm = self.y.left
@@ -57,7 +56,7 @@ class _YuMiArmPoller(Process):
                         try:
                             res = self.arm.goto_pose(filtered_pose, relative=True)
                         except YuMiControlException:
-                            pass
+                            logging.warn("Pose unreachable!")
                     except Empty:
                         pass
                 if not self.cmds_q.empty():
@@ -148,7 +147,7 @@ class YuMiTeleopHost:
                 full_filename = os.path.join(self.cfg['demo_path'], filename)
                 demo_obj = DemoWrapper.load(full_filename, robot, self.set_filter)
                 self._demos[demo_obj.name] = {
-                    'filename', full_filename,
+                    'filename': full_filename,
                     'obj': demo_obj
                 }
 
@@ -170,7 +169,10 @@ class YuMiTeleopHost:
             for sub in self.subs.values():
                 sub.unregister()
             self.ysub.stop()
-            self.webcam.stop()
+            try:
+                self.webcam.stop()
+            except Exception:
+                pass
             self.syncer.stop()
 
         return shutdown_hook
@@ -220,16 +222,16 @@ class YuMiTeleopHost:
             self.save_file_paths.append(self.cfg['data_srcs']['kinect']['T_path'])
 
         self.datas['poses'] = {
-            'left': DataStreamRecorder('motion_poses_left', self.ysub.left.get_pose, cache_path=cache_path, save_every=save_every),
-            'right': DataStreamRecorder('motion_poses_right', self.ysub.right.get_pose, cache_path=cache_path, save_every=save_every)
+            'left': DataStreamRecorder('poses_left', self.ysub.left.get_pose, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('poses_right', self.ysub.right.get_pose, cache_path=cache_path, save_every=save_every)
         }
         self.datas['states'] = {
-            'left': DataStreamRecorder('motion_states_left', self.ysub.left.get_state, cache_path=cache_path, save_every=save_every),
-            'right': DataStreamRecorder('motion_states_right', self.ysub.right.get_state, cache_path=cache_path, save_every=save_every)
+            'left': DataStreamRecorder('states_left', self.ysub.left.get_state, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('states_right', self.ysub.right.get_state, cache_path=cache_path, save_every=save_every)
         }
         self.datas['torques'] = {
-            'left': DataStreamRecorder('motion_torques_left', self.ysub.left.get_torque, cache_path=cache_path, save_every=save_every),
-            'right': DataStreamRecorder('motion_torques_right', self.ysub.right.get_torque, cache_path=cache_path, save_every=save_every)
+            'left': DataStreamRecorder('torques_left', self.ysub.left.get_torque, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('torques_right', self.ysub.right.get_torque, cache_path=cache_path, save_every=save_every)
         }
 
         self.grippers_bool = {
@@ -312,6 +314,7 @@ class YuMiTeleopHost:
             self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
 
         sleep(3)
+        rospy.loginfo("beginning teleop!")
         self._reset_masters_yumi_connector()
 
         if self._recording:

@@ -64,37 +64,40 @@ def playback(args):
     }
 
     # concating non-moving steps
-    concat_data = {
-        'left': [subsampled_seqs['left'].data[0]],
-        'right': [subsampled_seqs['right'].data[0]],
-        'gripper_left': [subsampled_seqs['gripper_left'].data[0]],
-        'gripper_right': [subsampled_seqs['gripper_right'].data[0]]
-    }
-    last_lp = concat_data['left'][0]
-    last_rp = concat_data['right'][0]
-    for t in range(1, min([len(seq.data) for seq in subsampled_seqs.values()])):
-        lg_t = subsampled_seqs['gripper_left'].data[t]
-        rg_t = subsampled_seqs['gripper_right'].data[t]
-        lp_t = subsampled_seqs['left'].data[t]
-        rp_t = subsampled_seqs['right'].data[t]
+    if cfg['concat']:
+        concat_data = {
+            'left': [subsampled_seqs['left'].data[0]],
+            'right': [subsampled_seqs['right'].data[0]],
+            'gripper_left': [subsampled_seqs['gripper_left'].data[0]],
+            'gripper_right': [subsampled_seqs['gripper_right'].data[0]]
+        }
+        last_lp = concat_data['left'][0]
+        last_rp = concat_data['right'][0]
+        for t in range(1, min([len(seq.data) for seq in subsampled_seqs.values()])):
+            lg_t = subsampled_seqs['gripper_left'].data[t]
+            rg_t = subsampled_seqs['gripper_right'].data[t]
+            lp_t = subsampled_seqs['left'].data[t]
+            rp_t = subsampled_seqs['right'].data[t]
 
-        if lg_t is not None or rg_t is not None or \
-            lp_t != last_lp or rp_t != last_rp:
-            concat_data['gripper_right'].append(rg_t)
-            concat_data['gripper_left'].append(lg_t)
-            concat_data['left'].append(lp_t)
-            concat_data['right'].append(rp_t)
+            if lg_t is not None or rg_t is not None or \
+                lp_t != last_lp or rp_t != last_rp:
+                concat_data['gripper_right'].append(rg_t)
+                concat_data['gripper_left'].append(lg_t)
+                concat_data['left'].append(lp_t)
+                concat_data['right'].append(rp_t)
 
-        last_lp = lp_t
-        last_rp = rp_t
-    concat_seqs = {
-        'left': Sequence(concat_data['left']),
-        'right': Sequence(concat_data['right']),
-        'gripper_left': Sequence(concat_data['gripper_left']),
-        'gripper_right': Sequence(concat_data['gripper_right']),
-    }
+            last_lp = lp_t
+            last_rp = rp_t
+        concat_seqs = {
+            'left': Sequence(concat_data['left']),
+            'right': Sequence(concat_data['right']),
+            'gripper_left': Sequence(concat_data['gripper_left']),
+            'gripper_right': Sequence(concat_data['gripper_right']),
+        }
+    else:
+        concat_seqs = subsampled_seqs
 
-    N = len(concat_seqs['left'].data)
+    N = min([len(seq.data) for seq in concat_seqs.values()])
 
     # processing time steps where zoning should be set to fine
     gripper_zoning = [None for _ in range(N)]
@@ -106,7 +109,7 @@ def playback(args):
             else:
                 gripper_zoning[t-1] = 'fine'
             gripper_zoning[t+1] = cfg['z']
-            
+
     # perform setup motions
     logging.info("Loading demo and performing setups.")
     y.reset_home()
