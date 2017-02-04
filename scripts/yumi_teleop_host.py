@@ -38,7 +38,6 @@ class _YuMiArmPoller(Process):
         self.filter = IdentityFilter()
 
     def run(self):
-        logging.getLogger().setLevel(ymc.LOGGING_LEVEL)
         if self.arm_name == "left":
             self.y = YuMiRobot(include_right=False)
             self.arm = self.y.left
@@ -57,7 +56,7 @@ class _YuMiArmPoller(Process):
                         try:
                             res = self.arm.goto_pose(filtered_pose, relative=True)
                         except YuMiControlException:
-                            pass
+                            logging.warn("Pose unreachable!")
                     except Empty:
                         pass
                 if not self.cmds_q.empty():

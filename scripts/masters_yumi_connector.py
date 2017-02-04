@@ -13,6 +13,7 @@ from masters_control.srv import pose_str
 
 from core import RigidTransform
 from yumi_teleop import T_to_ros_pose, ros_pose_to_T
+from multiprocessing import Queue
 
 _T_MC_YCR = RigidTransform(rotation=[[0,-1,0],
                                         [1,0,0],
@@ -65,6 +66,15 @@ class MastersYuMiConnector:
 
         rospy.loginfo("Waiting for first resest init pose...")
 
+        self.cb_prop_q = Queue()
+
+    def _update_cb_objs(self):
+        if self.cb_prop_q.qsize() > 0:
+            self.has_zeroed = True
+            for key, val in self.cb_prop_q.get().items():
+                setattr(self, key, val)
+            rospy.loginfo("Cb updated!")
+
     def _reset_init_poses(self, yumi_pose):
         rospy.loginfo("Reset Init Pose for {0}".format(self.pub_name))
         self.has_zeroed = True
@@ -78,12 +88,22 @@ class MastersYuMiConnector:
         self.T_w_yi = yumi_pose.copy()
         self.T_yi_yir = RigidTransform(rotation=self.T_w_yi.inverse().rotation, from_frame='yumi_init_ref', to_frame='yumi_init')
         self.T_ycr_yc = RigidTransform(rotation=self.T_w_yi.rotation, from_frame='yumi_current', to_frame='yumi_current_ref')
-        rospy.loginfo("Done!")
+
+        rospy.loginfo("Propagating to cb queues")
+        self.cb_prop_q.put({
+            'T_w_cu_t': self.T_w_cu_t,
+            'T_mzr_mz': self.T_mzr_mz,
+            'T_mc_mcr': self.T_mc_mcr,
+            'T_w_yi': self.T_w_yi,
+            'T_yi_yir': self.T_yi_yir,
+            'T_ycr_yc': self.T_ycr_yc
+        })
 
     def _clutch(self, state):
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
 
     def _position_cartesian_current_callback(self, ros_pose):
+        self._update_cb_objs()
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
 
         if not self.has_zeroed:
