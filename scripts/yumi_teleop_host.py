@@ -17,7 +17,7 @@ from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sen
 
 from masters_control.srv import str_str, pose_str
 from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter, DemoWrapper
-
+from yumi_teleop.constants import DELTA_GRIPPER_WIDTH_TH, MASTERS_GRIPPER_WIDTHS
 import IPython
 
 _L_SUB = "/yumi/l"
@@ -129,6 +129,11 @@ class YuMiTeleopHost:
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
 
+        self.current_masters_gripper_widths = {
+            'left': None,
+            'right': None
+        }
+
         self.ysub = YuMiSubscriber()
         self.ysub.start()
 
@@ -234,19 +239,19 @@ class YuMiTeleopHost:
             'right': DataStreamRecorder('torques_right', self.ysub.right.get_torque, cache_path=cache_path, save_every=save_every)
         }
 
-        self.grippers_bool = {
+        self.grippers_evs = {
             'left': QueueEventsSub(),
             'right': QueueEventsSub()
         }
 
-        self.datas['grippers_bool'] = {
-            'left': DataStreamRecorder('grippers_bool_left', self.grippers_bool['left'].get_event, cache_path=cache_path, save_every=save_every),
-            'right': DataStreamRecorder('grippers_bool_right', self.grippers_bool['right'].get_event, cache_path=cache_path, save_every=save_every)
+        self.datas['grippers_evs'] = {
+            'left': DataStreamRecorder('grippers_evs_left', self.grippers_evs['left'].get_event, cache_path=cache_path, save_every=save_every),
+            'right': DataStreamRecorder('grippers_evs_right', self.grippers_evs['right'].get_event, cache_path=cache_path, save_every=save_every)
         }
 
         self.all_datas.extend([
-            self.datas['grippers_bool']['left'],
-            self.datas['grippers_bool']['right'],
+            self.datas['grippers_evs']['left'],
+            self.datas['grippers_evs']['right'],
             self.datas['poses']['left'],
             self.datas['poses']['right'],
             self.datas['states']['left'],
@@ -404,12 +409,30 @@ class YuMiTeleopHost:
     def cmd_gripper(self, data):
         cmd = eval(data)
         arm_name = cmd[0]
-        if cmd[1]:
-            self._call_single_poller(arm_name, 'close_gripper')
-            self.grippers_bool[arm_name].put_event('close_gripper')
-        else:
-            self._call_single_poller(arm_name, 'open_gripper')
-            self.grippers_bool[arm_name].put_event('open_gripper')
+        if cmd[1] == 'binary':
+            if cmd[1]:
+                self._call_single_poller(arm_name, 'close_gripper')
+                self.grippers_evs[arm_name].put_event('close_gripper')
+            else:
+                self._call_single_poller(arm_name, 'open_gripper')
+                self.grippers_evs[arm_name].put_event('open_gripper')
+        elif cmd[1] == 'continuous':
+            move_gripper = False
+            scale = (MASTERS_GRIPPER_WIDTHS[arm_name]['max'] - MASTERS_GRIPPER_WIDTHS[arm_name]['min']) * cmd[2]
+            yumi_gripper_width = scale * ymc.MAX_GRIPPER_WIDTH
+
+            if self.current_gripper_widths[arm_name] is None:
+                self.current_gripper_widths[arm_name] = yumi_gripper_width
+                move_gripper = True
+            else:
+                delta_gripper_width = abs(self.current_gripper_widths[arm_name] - yumi_gripper_width)
+                if delta_gripper_width > DELTA_GRIPPER_WIDTH_TH:
+                    self.current_gripper_widths[arm_name] = yumi_gripper_width
+                    move_gripper = True
+
+            if move_gripper:
+                self._call_single_poller(arm_name, 'move_gripper', yumi_gripper_width, no_wait=True, wait_for_res=False)
+                self.grippers_evs[arm_name].put_event("('move_gripper', {})".format(yumi_gripper_width))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')

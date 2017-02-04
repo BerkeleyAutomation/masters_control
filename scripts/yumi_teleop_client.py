@@ -8,7 +8,7 @@ import rospy, cv2, argparse
 import numpy as np
 from multiprocessing import Process, Queue
 
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32
 from masters_control.srv import str_str
 from perception import OpenCVCameraSensor
 from core import YamlConfig
@@ -145,6 +145,7 @@ class UI(Process):
 class YuMiTeleopClient:
 
     def __init__(self, cfg):
+        self.cfg = cfg
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
         rospy.loginfo("Waiting for host ui service...")
@@ -157,15 +158,23 @@ class YuMiTeleopClient:
         self.menu_resume_teleop = ("Resume", "Finish")
         self.menu_demo = None
 
-        self.ui = UI(cfg)
+        self.ui = UI(self.cfg)
 
-        self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
-        self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
         self._select_sub = rospy.Subscriber('/dvrk/footpedals/camera', Bool, self._pedals_call_back_gen('select'))
         self._overlay_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus', Bool, self._pedals_call_back_gen('overlay'))
         self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
+
+
+        if self.cfg['grippers'] == 'binary':
+            self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
+            self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
+        elif self.cfg['grippers'] == 'continuous':
+            self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_position_current', Float32, self._gripper_callback_gen('left'))
+            self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_position_current', Float32, self._gripper_callback_gen('right'))
+        else:
+            raise ValueError("Unknown gripper mode! Can only be binary or continuous, got {}".format(self.cfg['grippers']))
 
         rospy.on_shutdown(self._shutdown_hook_gen())
 
@@ -190,9 +199,9 @@ class YuMiTeleopClient:
         return callback
 
     def _gripper_callback_gen(self, arm_name):
-        def callback(gripper_closed):
+        def callback(gripper_ev):
             if self.cur_state == "teleop" and not self._clutch_down:
-                self.ui_service("gripper", "('{0}',{1})".format(arm_name, gripper_closed.data))
+                self.ui_service("gripper", "('{0}','{1}', {2})".format(arm_name, self.cfg['grippers'], gripper_ev.data))
         return callback
 
     def _clutch_callback(self, msg):

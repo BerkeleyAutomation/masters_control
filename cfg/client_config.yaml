@@ -4,3 +4,4 @@ debug: False
 cams:
   0: True
   1: True
+grippers: 'continuous' # either binary or continuous
