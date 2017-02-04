@@ -129,7 +129,7 @@ class YuMiTeleopHost:
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
 
-        self.current_masters_gripper_widths = {
+        self.current_gripper_widths = {
             'left': None,
             'right': None
         }
@@ -418,8 +418,8 @@ class YuMiTeleopHost:
                 self.grippers_evs[arm_name].put_event('open_gripper')
         elif cmd[1] == 'continuous':
             move_gripper = False
-            scale = (MASTERS_GRIPPER_WIDTHS[arm_name]['max'] - MASTERS_GRIPPER_WIDTHS[arm_name]['min']) * cmd[2]
-            yumi_gripper_width = scale * ymc.MAX_GRIPPER_WIDTH
+            scale = (cmd[2] - MASTERS_GRIPPER_WIDTHS[arm_name]['min']) / (MASTERS_GRIPPER_WIDTHS[arm_name]['max'] - MASTERS_GRIPPER_WIDTHS[arm_name]['min'])
+            yumi_gripper_width = max(min(scale, 1), 0) * ymc.MAX_GRIPPER_WIDTH
 
             if self.current_gripper_widths[arm_name] is None:
                 self.current_gripper_widths[arm_name] = yumi_gripper_width
