@@ -78,8 +78,11 @@ class UI(Process):
                 frame1 = self._black_frame.copy()
                 frame2 = self._black_frame.copy()
             else:
-                frame1 = self.cams[self.cids[0]].frames().raw_data
-                frame2 = self.cams[self.cids[1]].frames().raw_data
+                frame1 = self.cams[self.cids[1]].frames().raw_data
+                frame2 = self.cams[self.cids[0]].frames().raw_data
+                if True:
+                    frame1 = np.rot90(np.rot90(frame1)).copy()
+                    frame2 = np.rot90(np.rot90(frame2)).copy()
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
