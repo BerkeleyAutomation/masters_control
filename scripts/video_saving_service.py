@@ -21,9 +21,8 @@ def save_video(trial_path, fps):
     all_chunks.sort()
 
     webcam_data = []
-    for chunk in all_chunks:
-        if chunk != '.finished':
-            webcam_data.extend(load(os.path.join(webcam_data_path, chunk)))
+    for i in range(1, len(all_chunks)):
+        webcam_data.extend(load(os.path.join(webcam_data_path, '{}.jb'.format(i))))
 
     frames = [data[1] for data in webcam_data]
     write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
