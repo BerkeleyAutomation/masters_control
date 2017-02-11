@@ -295,22 +295,7 @@ class YuMiTeleopHost:
             rospy.loginfo("In debug mode! Will not wait for masters yumi connector.")
 
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
-
-
-        rospy.loginfo("Serving teleop confirmation service...")
-        self.teleop_confirmation_q = Queue(maxsize=1)
-        def teleop_confirmation(q):
-            def enq():
-                rospy.loginfo("Received teleop confirmation!")
-                if q.qsize() == 0:
-                    q.push("ready")
-                return "ok"
-            teleop_confirmation_service = rospy.Service('yumi_teleop_confirmation_service', str_str, enq)
-        self.teleop_confirmation_p = Process(teleop_confirmation, args=(self.teleop_confirmation_q,))
-        self.teleop_confirmation_p.start()
-
         rospy.loginfo("All setup done! Serving UI Service...")
-
         rospy.spin()
 
     def _set_poller_forwards(self, val):
@@ -322,6 +307,8 @@ class YuMiTeleopHost:
             left_pose = T_to_ros_pose(self.ysub.left.get_pose(timestamp=False))
             right_pose = T_to_ros_pose(self.ysub.right.get_pose(timestamp=False))
 
+            rospy.loginfo('left pose {}'.format(ros_pose_to_T(left_pose, 'a', 'b').translation))
+
             self.init_pose_service(left=left_pose, right=right_pose)
 
     def _call_both_poller(self, method_name, *args, **kwargs):
@@ -332,30 +319,17 @@ class YuMiTeleopHost:
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
     def _teleop_begin(self, demo_name=None):
-        while self.teleop_confirmation_q.qsize() > 0:
-            self.teleop_confirmation_q.get_nowait()
-
         self._recording = demo_name is not None
         if self._recording:
             self._recording_demo_name = demo_name
             self._demos[self._recording_demo_name]['obj'].setup()
-            self._cur_demo_start_time = time()
         else:
             self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
             self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
 
         sleep(3)
-        rospy.loginfo("beginning teleop!")
         self._reset_masters_yumi_connector()
-
-        while True:
-            if self.teleop_confirmation_q.qsize() > 0:
-                break
-            sleep(1e-3)
-
-        if self._recording:
-            self.syncer.resume(reset_time=True)
-        self._set_poller_forwards(True)
+        rospy.loginfo("teleop in staging!")
 
     def _teleop_pause(self):
         if self.cur_state == "teleop_record":
@@ -371,9 +345,9 @@ class YuMiTeleopHost:
         self._set_poller_forwards(True)
 
     def _teleop_finish(self):
-        demo_time = time() - self._cur_demo_start_time
         self._set_poller_forwards(False)
         if self._recording:
+            demo_time = time() - self._cur_demo_start_time
             self._demos[self._recording_demo_name]['obj'].takedown()
             self._recording = False
         self._call_both_poller('reset_home')
@@ -396,14 +370,27 @@ class YuMiTeleopHost:
                                         self.cfg['fps']
                                         )
 
+    def t_teleop_staging(self, msg):
+        if msg.req == 'teleop_production':
+            if self._recording:
+                self.syncer.resume(reset_time=True)
+            self._set_poller_forwards(True)
+            rospy.loginfo("beginning teleop!")
+            if self._recording:
+                self.cur_state = "teleop_record"
+                self._cur_demo_start_time = time()
+            else:
+                self.cur_state = "teleop"
+        return "ok"
+
     def t_standby(self, msg):
         if msg.req == "teleop_start":
             self._teleop_begin()
-            self.cur_state = 'teleop'
+            self.cur_state = 'teleop_staging'
         elif msg.req == "choose_demo":
             demo_name = msg.data
             self._teleop_begin(demo_name)
-            self.cur_state = 'teleop_record'
+            self.cur_state = 'teleop_staging'
         elif msg.req == "list_demos":
             res = repr(self._demos.keys())
             return res
