@@ -7,17 +7,18 @@ Author: Jacky Liang
 from multiprocessing import Process, Queue
 import argparse, os, sys, logging, rospy
 from geometry_msgs.msg import Pose
-from time import sleep
+from std_msgs.msg import String
+from time import sleep, time
 from Queue import Empty
 
-from yumipy import YuMiRobot, YuMiSubscriber, YuMiState
+from yumipy import YuMiRobot, YuMiSubscriber, YuMiState, YuMiControlException
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
 from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
 
 from masters_control.srv import str_str, pose_str
 from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter, DemoWrapper
-from yumi_teleop.constants import DELTA_GRIPPER_WIDTH_TH, MASTERS_GRIPPER_WIDTHS
+from yumi_teleop.constants import MASTERS_GRIPPER_WIDTHS
 import IPython
 
 _L_SUB = "/yumi/l"
@@ -49,16 +50,6 @@ class _YuMiArmPoller(Process):
 
         while True:
             try:
-                if self.forward_poses and not self.pose_q.empty():
-                    try:
-                        pose = self.pose_q.get()
-                        filtered_pose = self.filter.apply(pose)
-                        try:
-                            res = self.arm.goto_pose(filtered_pose, relative=True)
-                        except YuMiControlException:
-                            logging.warn("Pose unreachable!")
-                    except Empty:
-                        pass
                 if not self.cmds_q.empty():
                     cmd = self.cmds_q.get()
                     if cmd[0] == 'forward':
@@ -80,6 +71,17 @@ class _YuMiArmPoller(Process):
                         elif cmd[1] == 'single':
                             method = getattr(self.arm, method_name)
                         method(*args, **kwargs)
+                elif self.forward_poses and not self.pose_q.empty():
+                    try:
+                        pose = self.pose_q.get()
+                        filtered_pose = self.filter.apply(pose)
+                        try:
+                            res = self.arm.goto_pose(filtered_pose, relative=True)
+                        except YuMiControlException:
+                            logging.warn("Pose unreachable!")
+                    except Empty:
+                        pass
+
                 sleep(0.001)
             except KeyboardInterrupt:
                 logging.debug("Shutting down {0} arm poller".format(self.arm_name))
@@ -129,7 +131,7 @@ class YuMiTeleopHost:
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
 
-        self.current_gripper_widths = {
+        self._gripper_states = {
             'left': None,
             'right': None
         }
@@ -140,6 +142,8 @@ class YuMiTeleopHost:
         self._recording_demo_name = None
         self._recording = False
         self._demos = {}
+        self._cur_demo_start_time = None
+        self._cur_demo_pause_time = None
 
         robot = {
             'both_poller': self._call_both_poller,
@@ -151,10 +155,14 @@ class YuMiTeleopHost:
             if filename.endswith('demo.py'):
                 full_filename = os.path.join(self.cfg['demo_path'], filename)
                 demo_obj = DemoWrapper.load(full_filename, robot, self.set_filter)
-                self._demos[demo_obj.name] = {
-                    'filename': full_filename,
-                    'obj': demo_obj
-                }
+                if demo_obj.name in self.cfg['display_demos']:
+                    self._demos[demo_obj.name] = {
+                        'filename': full_filename,
+                        'obj': demo_obj
+                    }
+
+        # for debug
+        self.debug_pub = rospy.Publisher('/yumi/host', String)
 
     def _enqueue_pose_gen(self, q):
         def enqueue_pose(pose):
@@ -287,6 +295,20 @@ class YuMiTeleopHost:
             rospy.loginfo("In debug mode! Will not wait for masters yumi connector.")
 
         self.ui_service = rospy.Service('yumi_teleop_host_ui_service', str_str, self.dispatcher)
+
+
+        rospy.loginfo("Serving teleop confirmation service...")
+        self.teleop_confirmation_q = Queue(maxsize=1)
+        def teleop_confirmation(q):
+            def enq():
+                rospy.loginfo("Received teleop confirmation!")
+                if q.qsize() == 0:
+                    q.push("ready")
+                return "ok"
+            teleop_confirmation_service = rospy.Service('yumi_teleop_confirmation_service', str_str, enq)
+        self.teleop_confirmation_p = Process(teleop_confirmation, args=(self.teleop_confirmation_q,))
+        self.teleop_confirmation_p.start()
+
         rospy.loginfo("All setup done! Serving UI Service...")
 
         rospy.spin()
@@ -310,10 +332,14 @@ class YuMiTeleopHost:
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
     def _teleop_begin(self, demo_name=None):
+        while self.teleop_confirmation_q.qsize() > 0:
+            self.teleop_confirmation_q.get_nowait()
+
         self._recording = demo_name is not None
         if self._recording:
             self._recording_demo_name = demo_name
             self._demos[self._recording_demo_name]['obj'].setup()
+            self._cur_demo_start_time = time()
         else:
             self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
             self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
@@ -322,6 +348,11 @@ class YuMiTeleopHost:
         rospy.loginfo("beginning teleop!")
         self._reset_masters_yumi_connector()
 
+        while True:
+            if self.teleop_confirmation_q.qsize() > 0:
+                break
+            sleep(1e-3)
+
         if self._recording:
             self.syncer.resume(reset_time=True)
         self._set_poller_forwards(True)
@@ -329,15 +360,18 @@ class YuMiTeleopHost:
     def _teleop_pause(self):
         if self.cur_state == "teleop_record":
             self.syncer.pause()
+            self._cur_demo_pause_time = time()
         self._set_poller_forwards(False)
 
     def _teleop_resume(self):
         self._reset_masters_yumi_connector()
         if self.cur_state == "teleop_record_pause":
             self.syncer.resume()
+            self._cur_demo_start_time += time() - self._cur_demo_pause_time
         self._set_poller_forwards(True)
 
     def _teleop_finish(self):
+        demo_time = time() - self._cur_demo_start_time
         self._set_poller_forwards(False)
         if self._recording:
             self._demos[self._recording_demo_name]['obj'].takedown()
@@ -346,7 +380,16 @@ class YuMiTeleopHost:
         self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
             self.syncer.pause()
+            while True:
+                s = raw_input("Was the demo a success? [y/n] ")
+                if s in ('y', 'n'):
+                    break
+                else:
+                    print "Please only input 'y' or 'n'!\n"
+            s = True if s == 'y' else False
             self.logger.save_demo_data(self._recording_demo_name,
+                                        demo_time,
+                                        s,
                                         self.cfg['supervisor'],
                                         self.save_file_paths + [self._demos[self._recording_demo_name]['filename']],
                                         self.all_datas,
@@ -406,35 +449,78 @@ class YuMiTeleopHost:
             self.cur_state = 'standby'
         return "ok"
 
+    def _get_gripper_state(self, s):
+        if s > 0.85:
+            return ('open',)
+        if 0.6 < s <= 0.85:
+            return ('hold',)
+        # if 0.5 < s <= 0.6:
+        #     return ('squeeze', 0.004, 7)
+        if 0.4 < s <= 0.6:
+            return ('squeeze', 0.003, 9)
+        # if 0.3 < s <= 0.4:
+        #     return ('squeeze', 0.002, 11)
+        if 0.2 < s <= 0.4:
+            return ('squeeze', 0.001, 13)
+        else:
+            return ('close',)
+
     def cmd_gripper(self, data):
         cmd = eval(data)
         arm_name = cmd[0]
         if cmd[1] == 'binary':
-            if cmd[1]:
+            if cmd[2]:
                 self._call_single_poller(arm_name, 'close_gripper')
                 self.grippers_evs[arm_name].put_event('close_gripper')
             else:
                 self._call_single_poller(arm_name, 'open_gripper')
                 self.grippers_evs[arm_name].put_event('open_gripper')
         elif cmd[1] == 'continuous':
-            move_gripper = False
             scale = (cmd[2] - MASTERS_GRIPPER_WIDTHS[arm_name]['min']) / (MASTERS_GRIPPER_WIDTHS[arm_name]['max'] - MASTERS_GRIPPER_WIDTHS[arm_name]['min'])
-            yumi_gripper_width = max(min(scale, 1), 0) * ymc.MAX_GRIPPER_WIDTH
+            scale = max(min(scale, 1), 0)
+            self.debug_pub.publish('scale {}: {}'.format(arm_name, scale))
 
-            if self.current_gripper_widths[arm_name] is None:
-                self.current_gripper_widths[arm_name] = yumi_gripper_width
-                move_gripper = True
-            else:
-                delta_gripper_width = abs(self.current_gripper_widths[arm_name] - yumi_gripper_width)
-                if delta_gripper_width > DELTA_GRIPPER_WIDTH_TH:
-                    self.current_gripper_widths[arm_name] = yumi_gripper_width
-                    move_gripper = True
+            if self._gripper_states[arm_name] is None:
+                self._gripper_states[arm_name] = self._get_gripper_state(scale)
+                return
 
-            if move_gripper:
-                self._call_single_poller(arm_name, 'move_gripper', yumi_gripper_width, no_wait=True, wait_for_res=False)
-                self.grippers_evs[arm_name].put_event("('move_gripper', {})".format(yumi_gripper_width))
+            cur_state = self._get_gripper_state(scale)
+            last_state = self._gripper_states[arm_name]
+            if cur_state != last_state:
+                self.debug_pub.publish('state change {} -> {}'.format(last_state, cur_state))
+                cur_name = cur_state[0]
+                last_name = last_state[0]
+                if cur_name == 'open':
+                    self._call_single_poller(arm_name, 'open_gripper')
+                    self.grippers_evs[arm_name].put_event('open_gripper')
+                elif cur_name == 'hold':
+                    self._call_single_poller(arm_name, 'move_gripper', 0.005, wait_for_res=False)
+                    self.grippers_evs[arm_name].put_event(['move_gripper', 0.005])
+                elif cur_name == 'squeeze' and last_name == 'close':
+                    width = cur_state[1]
+                    self._call_single_poller(arm_name, 'move_gripper', width, wait_for_res=False)
+                    self.grippers_evs[arm_name].put_event(['move_gripper', width])
+                elif cur_name == 'squeeze' and last_name == 'hold':
+                    force = cur_state[2]
+                    self._call_single_poller(arm_name, 'close_gripper', force, wait_for_res=False)
+                    self.grippers_evs[arm_name].put_event(['close_gripper', force])
+                elif cur_name == 'squeeze' and last_name == 'squeeze':
+                    width, force = cur_state[1:]
+                    last_width = last_state[1]
+                    if width < last_width:
+                        self._call_single_poller(arm_name, 'close_gripper', force, wait_for_res=False)
+                        self.grippers_evs[arm_name].put_event(['close_gripper', force])
+                    else:
+                        self._call_single_poller(arm_name, 'move_gripper', width, wait_for_res=False)
+                        self.grippers_evs[arm_name].put_event(['move_gripper', width])
+                elif cur_name == 'close':
+                    self._call_single_poller(arm_name, 'close_gripper')
+                    self.grippers_evs[arm_name].put_event('close_gripper')
+                self._gripper_states[arm_name] = cur_state
+
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.INFO)
     parser = argparse.ArgumentParser(description='YuMi Teleop Host')
     parser.add_argument('-c', '--config_path', type=str, default='cfg/demo_config.yaml', help='path to config file')
     args = parser.parse_args()

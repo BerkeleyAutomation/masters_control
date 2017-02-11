@@ -3,7 +3,7 @@ Exposing YuMi Teleop classes to package level
 Author: Jacky Liang
 '''
 from demo_wrapper import DemoWrapper
-from motion_filter import IdentityFilter, ProjectionFilter, TranslationPassFilter, MovingAverageFilter
+from motion_filter import IdentityFilter, ProjectionFilter, TranslationPassFilter, MovingAverageFilter, HeightFilter
 from queue_events_sub import QueueEventsSub
 from teleop_experiment_logger import TeleopExperimentLogger
 from util import ros_pose_to_T, T_to_ros_pose, str_str_service_wrapper

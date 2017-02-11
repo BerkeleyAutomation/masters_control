@@ -5,7 +5,7 @@ target poses for the YuMi.
 Meant to operate along yumi_teleop_client and yumi_teleop_host
 Author: Jacky Liang
 """
-import rospy
+import rospy, os
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose
 from time import time
@@ -66,18 +66,8 @@ class MastersYuMiConnector:
 
         rospy.loginfo("Waiting for first resest init pose...")
 
-        self.cb_prop_q = Queue()
-
-    def _update_cb_objs(self):
-        if self.cb_prop_q.qsize() > 0:
-            self.has_zeroed = True
-            for key, val in self.cb_prop_q.get().items():
-                setattr(self, key, val)
-            rospy.loginfo("Cb updated!")
-
     def _reset_init_poses(self, yumi_pose):
         rospy.loginfo("Reset Init Pose for {0}".format(self.pub_name))
-        self.has_zeroed = True
 
         self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
         self.T_mzr_mz = RigidTransform(rotation=self.T_w_cu_t.rotation,
@@ -89,23 +79,13 @@ class MastersYuMiConnector:
         self.T_yi_yir = RigidTransform(rotation=self.T_w_yi.inverse().rotation, from_frame='yumi_init_ref', to_frame='yumi_init')
         self.T_ycr_yc = RigidTransform(rotation=self.T_w_yi.rotation, from_frame='yumi_current', to_frame='yumi_current_ref')
 
-        rospy.loginfo("Propagating to cb queues")
-        self.cb_prop_q.put({
-            'T_w_cu_t': self.T_w_cu_t,
-            'T_mzr_mz': self.T_mzr_mz,
-            'T_mc_mcr': self.T_mc_mcr,
-            'T_w_yi': self.T_w_yi,
-            'T_yi_yir': self.T_yi_yir,
-            'T_ycr_yc': self.T_ycr_yc
-        })
+        self.has_zeroed = True
 
     def _clutch(self, state):
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
 
     def _position_cartesian_current_callback(self, ros_pose):
-        self._update_cb_objs()
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
-
         if not self.has_zeroed:
             return
 

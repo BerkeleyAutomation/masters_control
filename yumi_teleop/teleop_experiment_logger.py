@@ -13,6 +13,8 @@ class TeleopExperimentLogger(ExperimentLogger):
     RECORDS_HEADERS_TYPES = [
             ('experiment_id','str'),
             ('demo_name','str'),
+            ('demo_time','float'),
+            ('success','bool'),
             ('supervisor', 'str'),
             ('trial_num', 'int'),
             ('trial_path','str'),
@@ -44,7 +46,7 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, supervisor, save_file_paths, data_streamers, fps):
+    def save_demo_data(self, demo_name, demo_time, success, supervisor, save_file_paths, data_streamers, fps):
         last_demo_record = self._demo_records_model.get_by_cols({
                                                                 'demo_name': demo_name,
                                                                 'supervisor': supervisor
@@ -82,6 +84,8 @@ class TeleopExperimentLogger(ExperimentLogger):
         self._demo_records_model.insert({
             'experiment_id': self.id,
             'demo_name': demo_name,
+            'demo_time': demo_time,
+            'success': success,
             'supervisor': supervisor,
             'trial_num': trial_num,
             'trial_path': trial_path,

@@ -151,6 +151,7 @@ class YuMiTeleopClient:
         rospy.loginfo("Waiting for host ui service...")
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
+        self.teleop_confirmation_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_confirmation_service', str_str))
         rospy.loginfo("UI Service established!")
 
         self.menu_main = ("Collect Demos", "Sandbox", "Quit")
@@ -183,6 +184,8 @@ class YuMiTeleopClient:
 
         rospy.on_shutdown(self._shutdown_hook_gen())
 
+        self.teleop_running = False
+
     def _shutdown_hook_gen(self):
         def shutdown_hook():
             self.ui.stop()
@@ -198,21 +201,23 @@ class YuMiTeleopClient:
         def callback(msg):
             is_down = msg.data
             if is_down:
-              pedals_io = {'overlay':False, 'down':False, 'select':False}
-              pedals_io[pedal] = True
-              self.ui.set_pedals(pedals_io)
+                pedals_io = {'overlay':False, 'down':False, 'select':False}
+                pedals_io[pedal] = True
+                self.ui.set_pedals(pedals_io)
+            if self.cur_state == "teleop" and not self.teleop_running:
+                self.teleop_confirmation_service("ready")
         return callback
 
     def _gripper_callback_gen(self, arm_name):
         def callback(gripper_ev):
             if self.cur_state == "teleop" and not self._clutch_down:
-                
+
                 if self.cfg['grippers'] == 'continuous':
                     if self.last_gripper_widths[arm_name] is None:
                         self.last_gripper_widths[arm_name] = gripper_ev.data
                     if abs(gripper_ev.data - self.last_gripper_widths[arm_name]) < 0.1:
                         return
-                
+
                 self.ui_service("gripper", "('{0}','{1}', {2})".format(arm_name, self.cfg['grippers'], gripper_ev.data))
         return callback
 
