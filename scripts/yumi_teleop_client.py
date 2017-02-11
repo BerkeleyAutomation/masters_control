@@ -134,6 +134,7 @@ class UI(Process):
         return self.res_q.get()
 
     def set_overlay(self, overlay):
+        print 'setting overlay to ', overlay
         self.req_q.put(("overlay", overlay))
 
     def stop(self):
@@ -157,6 +158,7 @@ class YuMiTeleopClient:
         self.menu_main = ("Collect Demos", "Sandbox", "Quit")
         self.menu_pause_teleop = ("Pause", "Finish")
         self.menu_resume_teleop = ("Resume", "Finish")
+        self.menu_teleop_staging = ("Go!",)
         self.menu_demo = None
 
         self.ui = UI(self.cfg)
@@ -184,8 +186,6 @@ class YuMiTeleopClient:
 
         rospy.on_shutdown(self._shutdown_hook_gen())
 
-        self.teleop_running = False
-
     def _shutdown_hook_gen(self):
         def shutdown_hook():
             self.ui.stop()
@@ -204,8 +204,6 @@ class YuMiTeleopClient:
                 pedals_io = {'overlay':False, 'down':False, 'select':False}
                 pedals_io[pedal] = True
                 self.ui.set_pedals(pedals_io)
-            if self.cur_state == "teleop" and not self.teleop_running:
-                self.teleop_confirmation_service("ready")
         return callback
 
     def _gripper_callback_gen(self, arm_name):
@@ -238,6 +236,8 @@ class YuMiTeleopClient:
 
             # calls transition
             transition = getattr(self, "t_{0}".format(self.cur_state))
+            print "calling transtion on t_{}".format(self.cur_state)
+
             self.cur_state, self.cur_menu, overlay = transition(ui_input)
             self.ui.set_overlay(overlay)
 
@@ -245,20 +245,25 @@ class YuMiTeleopClient:
                 break
         self.ui.stop()
 
+    def t_teleop_staging(self, ui_input):
+        if ui_input == "Go!":
+            _ = self.ui_service("teleop_production",)
+            return "teleop", self.menu_pause_teleop, False        
+
     def t_standby(self, ui_input):
         if ui_input == "Collect Demos":
             return "demo_selection", self.menu_demo, True
         elif ui_input == "Sandbox":
-            res = self.ui_service("teleop_start")
-            return "teleop", self.menu_pause_teleop, False
+            _ = self.ui_service("teleop_start",)
+            return "teleop_staging", self.menu_teleop_staging, True
         elif ui_input == "Quit":
             return "exit", None, None
 
     def t_demo_selection(self, ui_input):
         if ui_input == "Back":
             return "standby", self.menu_main, True
-        res = self.ui_service("choose_demo", ui_input)
-        return "teleop", self.menu_pause_teleop, False
+        _ = self.ui_service("choose_demo", ui_input)
+        return "teleop_staging", self.menu_teleop_staging, True
 
     def t_teleop(self, ui_input):
         if ui_input == "Pause":
