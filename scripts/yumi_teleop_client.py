@@ -27,10 +27,16 @@ class UI(Process):
         self.res_q = Queue()
         self.cfg = cfg
         self.debug = self.cfg['debug']
-        self.cids = []
-        for id, use in self.cfg['cams'].items():
-            if use:
-                self.cids.append(id)
+        self.frame_cam_map = {
+              'left':{
+                  'cur': 0,
+                  'cams': ['left', 'side'],
+                },
+              'right':{
+                  'cur': 0,
+                  'cams': ['right']
+                }
+            }
 
     def gen_list_view(self, frame):
         overlay = frame.copy()
@@ -60,9 +66,9 @@ class UI(Process):
             self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
         else:
             self.cams = {}
-            for cid in self.cids:
-                self.cams[cid] = OpenCVCameraSensor(cid)
-                self.cams[cid].start()
+            for name in self.cfg['cams']:   
+                self.cams[name] = OpenCVCameraSensor(int(self.cfg['cams'][name]['cid']))
+                self.cams[name].start()
 
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
@@ -78,10 +84,13 @@ class UI(Process):
                 frame1 = self._black_frame.copy()
                 frame2 = self._black_frame.copy()
             else:
-                frame1 = self.cams[self.cids[1]].frames().raw_data
-                frame2 = self.cams[self.cids[0]].frames().raw_data
-                if True:
+                frame1_name = self.frame_cam_map['left']['cams'][self.frame_cam_map['left']['cur']]
+                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']] 
+                frame1 = self.cams[frame1_name].frames().raw_data
+                frame2 = self.cams[frame2_name].frames().raw_data
+                if self.cfg['cams'][frame1_name]['flip']:
                     frame1 = np.rot90(np.rot90(frame1)).copy()
+                if self.cfg['cams'][frame2_name]['flip']:
                     frame2 = np.rot90(np.rot90(frame2)).copy()
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
@@ -119,6 +128,11 @@ class UI(Process):
                     self.list_view = []
                 if len(self.list_view) > 0:
                     self.list_index = self.list_index % len(self.list_view)
+            else:
+                if pressed == ord('s') or pedals_io['down']: # cycle right
+                    self.frame_cam_map['right']['cur'] = (self.frame_cam_map['right']['cur'] + 1) % len(self.frame_cam_map['right']['cams'])
+                elif pressed == ord('d') or pedals_io['select']: # cycle left cam
+                    self.frame_cam_map['left']['cur'] = (self.frame_cam_map['left']['cur'] + 1) % len(self.frame_cam_map['left']['cams'])
             if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
