@@ -7,6 +7,7 @@ Author: Jacky Liang
 import rospy, cv2, argparse
 import numpy as np
 from multiprocessing import Process, Queue
+from Queue import Empty
 from cv_bridge import CvBridge
 from std_msgs.msg import Bool, Float32
 from sensor_msgs.msg import Image
@@ -54,7 +55,10 @@ class UI(Process):
         frames_q = Queue(maxsize=1)
         def enqueue(msg):
             while frames_q.qsize() > 0:
-                frames_q.get_nowait()
+                try:
+                    frames_q.get_nowait()
+                except Empty:
+                    pass
             image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
             frames_q.put(image[...,::-1])
         self.subs.append(rospy.Subscriber(topic_name, Image, enqueue))
