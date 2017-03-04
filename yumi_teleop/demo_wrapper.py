@@ -29,8 +29,8 @@ class _PseudoYuMiArm:
     def open_gripper(self):
         self._call_single_poller(self._arm_name, 'open_gripper')
 
-    def close_gripper(self):
-        self._call_single_poller(self._arm_name, 'close_gripper')
+    def close_gripper(self, *args, **kwargs):
+        self._call_single_poller(self._arm_name, 'close_gripper', *args, **kwargs)
 
     def reset_home(self):
         self._call_single_poller(self._arm_name, 'reset_home')

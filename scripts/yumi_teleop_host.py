@@ -323,12 +323,9 @@ class YuMiTeleopHost:
         if self._recording:
             self._recording_demo_name = demo_name
             self._demos[self._recording_demo_name]['obj'].setup()
-        else:
-            self._call_single_poller('right', 'goto_state', YuMiState([36.42, -117.3, 35.59, 50.42, 46.19, 66.02, -100.28]))
-            self._call_single_poller('left', 'goto_state', YuMiState([-36.42, -117.3, 35.59, -50.42, 46.19, 113.98, 100.28]))
-
-        sleep(3)
-        self._reset_masters_yumi_connector()
+        else: #sandbox mode
+            self._call_single_poller('right', 'goto_state', ymc.AXIS_ALIGNED_STATES['inwards']['right'])
+            self._call_single_poller('left', 'goto_state', ymc.AXIS_ALIGNED_STATES['inwards']['left'])
         rospy.loginfo("teleop in staging!")
 
     def _teleop_pause(self):
@@ -347,19 +344,20 @@ class YuMiTeleopHost:
     def _teleop_finish(self):
         self._set_poller_forwards(False)
         if self._recording:
+            self.syncer.pause()
             demo_time = time() - self._cur_demo_start_time
             self._demos[self._recording_demo_name]['obj'].takedown()
             self._recording = False
         self._call_both_poller('reset_home')
         self._call_both_poller('open_grippers')
         if self.cur_state == "teleop_record":
-            self.syncer.pause()
             while True:
                 s = raw_input("Was the demo a success? [y/n] ")
                 if s in ('y', 'n'):
                     break
                 else:
                     print "Please only input 'y' or 'n'!\n"
+            c = raw_input('Any comments? ')
             s = True if s == 'y' else False
             self.logger.save_demo_data(self._recording_demo_name,
                                         demo_time,
@@ -367,11 +365,13 @@ class YuMiTeleopHost:
                                         self.cfg['supervisor'],
                                         self.save_file_paths + [self._demos[self._recording_demo_name]['filename']],
                                         self.all_datas,
-                                        self.cfg['fps']
+                                        self.cfg['fps'],
+                                        comments = c
                                         )
 
     def t_teleop_staging(self, msg):
         if msg.req == 'teleop_production':
+            self._reset_masters_yumi_connector()
             if self._recording:
                 self.syncer.resume(reset_time=True)
             self._set_poller_forwards(True)
@@ -437,18 +437,18 @@ class YuMiTeleopHost:
         return "ok"
 
     def _get_gripper_state(self, s):
-        if s > 0.85:
+        if s > 0.9:
             return ('open',)
-        if 0.6 < s <= 0.85:
+        if 0.4 < s <= 0.9:
             return ('hold',)
         # if 0.5 < s <= 0.6:
         #     return ('squeeze', 0.004, 7)
-        if 0.4 < s <= 0.6:
-            return ('squeeze', 0.003, 9)
+        # if 0.4 < s <= 0.6:
+        #     return ('squeeze', 0.003, 9)
         # if 0.3 < s <= 0.4:
         #     return ('squeeze', 0.002, 11)
-        if 0.2 < s <= 0.4:
-            return ('squeeze', 0.001, 13)
+        # if 0.2 < s <= 0.4:
+        #     return ('squeeze', 0.001, 13)
         else:
             return ('close',)
 

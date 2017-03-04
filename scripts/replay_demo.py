@@ -44,8 +44,8 @@ def playback(args):
 
     _, left_data = zip(*load(os.path.join(trial_path, '{0}_left.jb'.format(cfg['mode']))))
     _, right_data = zip(*load(os.path.join(trial_path, '{0}_right.jb'.format(cfg['mode']))))
-    _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_left.jb')))
-    _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_bool_right.jb')))
+    _, gripper_left_evs = zip(*load(os.path.join(trial_path, 'grippers_evs_left.jb')))
+    _, gripper_right_evs = zip(*load(os.path.join(trial_path, 'grippers_evs_right.jb')))
 
     seqs = {
         'left': Sequence([t[1] for t in left_data]),
@@ -130,7 +130,7 @@ def playback(args):
         syncer.pause()
         syncer.flush()
         syncer.resume(reset_time=True)
-
+        
     # perform trajectory
     logging.info("Playing trajectory")
     for t in range(N):
