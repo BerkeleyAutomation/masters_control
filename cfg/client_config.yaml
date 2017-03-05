@@ -2,13 +2,13 @@
 
 debug: False
 cams:
-  'left':
-    'topic_name': 'yumi_teleop/vision_left/image_raw'
+  'left': 
+    'cid': 1
     'flip': True
-  'right':
-    'topic_name': 'yumi_teleop/vision_right/image_raw'
+  'right': 
+    'cid': 2
     'flip': True
-  'side':
-    'topic_name': 'yumi_teleop/vision_ws/image_raw'
+  'side': 
+    'cid': 0 
     'flip': False
 grippers: 'continuous' # either binary or continuous

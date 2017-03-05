@@ -7,16 +7,13 @@ Author: Jacky Liang
 import rospy, cv2, argparse
 import numpy as np
 from multiprocessing import Process, Queue
-from Queue import Empty
-from cv_bridge import CvBridge
+
 from std_msgs.msg import Bool, Float32
-from sensor_msgs.msg import Image
 from masters_control.srv import str_str
+from perception import OpenCVCameraSensor
 from core import YamlConfig
-from time import sleep
 
 from yumi_teleop import str_str_service_wrapper
-import IPython
 
 class UI(Process):
 
@@ -40,32 +37,6 @@ class UI(Process):
                   'cams': ['right']
                 }
             }
-        self.cams = {}
-        self.subs = []
-        self.cv_bridge = CvBridge()
-
-        if self.debug:
-            self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
-        else:
-            for name in self.cfg['cams']:
-                self.cams[name] = self.gen_camera_frames(name, self.cfg['cams'][name]['topic_name'])
-
-    def gen_camera_frames(self, view_name, topic_name):
-        rospy.loginfo("gen for {}".format(topic_name))
-        frames_q = Queue(maxsize=1)
-        def enqueue(msg):
-            while frames_q.qsize() > 0:
-                try:
-                    frames_q.get_nowait()
-                except Empty:
-                    pass
-            image = self.cv_bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-            frames_q.put(image[...,::-1])
-        self.subs.append(rospy.Subscriber(topic_name, Image, enqueue))
-
-        def frames():
-            return frames_q.get()
-        return frames
 
     def gen_list_view(self, frame):
         overlay = frame.copy()
@@ -91,6 +62,14 @@ class UI(Process):
         return overlay
 
     def run(self):
+        if self.debug:
+            self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
+        else:
+            self.cams = {}
+            for name in self.cfg['cams']:   
+                self.cams[name] = OpenCVCameraSensor(int(self.cfg['cams'][name]['cid']))
+                self.cams[name].start()
+
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
         self.debug_left = cv2.namedWindow("debug_left", cv2.cv.CV_WINDOW_NORMAL)
@@ -106,14 +85,13 @@ class UI(Process):
                 frame2 = self._black_frame.copy()
             else:
                 frame1_name = self.frame_cam_map['left']['cams'][self.frame_cam_map['left']['cur']]
-                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']]
-                frame1 = self.cams[frame1_name]()
-                frame2 = self.cams[frame2_name]()
+                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']] 
+                frame1 = self.cams[frame1_name].frames().raw_data
+                frame2 = self.cams[frame2_name].frames().raw_data
                 if self.cfg['cams'][frame1_name]['flip']:
                     frame1 = np.rot90(np.rot90(frame1)).copy()
                 if self.cfg['cams'][frame2_name]['flip']:
                     frame2 = np.rot90(np.rot90(frame2)).copy()
-
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
@@ -158,6 +136,9 @@ class UI(Process):
             if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
+        if not self.debug:
+            for cam in self.cams.values():
+                cam.stop()
         cv2.destroyAllWindows()
 
     def list_view(self, lst):
@@ -172,8 +153,6 @@ class UI(Process):
 
     def stop(self):
         self.req_q.put(("stop",))
-        for sub in self.subs:
-            sub.unregister()
 
     def set_pedals(self, pedals_io):
         self.req_q.put(("pedals", pedals_io))
@@ -283,7 +262,7 @@ class YuMiTeleopClient:
     def t_teleop_staging(self, ui_input):
         if ui_input == "Go!":
             _ = self.ui_service("teleop_production",)
-            return "teleop", self.menu_pause_teleop, False
+            return "teleop", self.menu_pause_teleop, False        
 
     def t_standby(self, ui_input):
         if ui_input == "Collect Demos":
