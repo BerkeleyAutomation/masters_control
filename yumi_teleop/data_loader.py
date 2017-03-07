@@ -7,6 +7,7 @@ import os
 from joblib import load
 import numpy as np
 from core import CSVModel, RigidTransform
+import IPython
 
 ROOT_PATH = '/mnt/hdd/data/'
 
@@ -46,34 +47,27 @@ def load_joints(trial_path, arm_name):
     joints_lst = [s.joints for s in states]
     return np.array(joints_lst)
 
-def load_webcam(trial_path):
-    '''
-    Returns n by 480 by 680 by 3 np array. color channels are RGB
-    '''
-    webcam_data_path = os.path.join(trial_path, 'webcam')
-
-    all_chunks = os.listdir(webcam_data_path)
+def concat_chunks(path):
+    all_chunks = os.listdir(path)
     all_chunks.sort()
+    data = []
+    for chunk in all_chunks:
+        if chunk != '.finished':
+            data.extend(load(os.path.join(path, chunk)))
 
-    webcam_data = []
-    for i in range(1, len(all_chunks)):
-        webcam_data.extend(load(os.path.join(webcam_data_path, '{}.jb'.format(i))))
+    return data
 
-    frames = [x[1].data for x in webcam_data]
-    return np.array(frames)
-
-def load_primesense(trial_path):
+def load_images(trial_path, device, numpy=True):
     '''
-    Returns n by 640 by 480 np array
+    load n by h by w by (3, 1) (3 if webcam, 1 if depth) array
     '''
-    ps_data_path = os.path.join(trial_path, 'primesense_depth')
+    if device not in ('webcam', 'kinect_depth', 'primesense_depth'):
+        raise ValueError("Can only accept devices: webcam, kinect_depth, or primesense_depth. Got {}".format(device))
+    data_path = os.path.join(trial_path, device)
+    data = concat_chunks(data_path)
 
-    all_chunks = os.listdir(ps_data_path)
-    all_chunks.sort()
-
-    ps_data = []
-    for i in range(1, len(all_chunks)):
-        ps_data.extend(load(os.path.join(ps_data_path, '{}.jb'.format(i))))
-
-    frames = [data[1] for data in ps_data]
-    return np.array(frames)
+    frames = [x[1].data for x in data]
+    if numpy:
+        return np.array(frames)
+    else:
+        return frames

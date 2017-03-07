@@ -6,6 +6,7 @@ from urlparse import urlparse, parse_qs
 from joblib import load
 from perception import write_video
 from time import sleep
+from yumi_teleop import load_images
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -17,14 +18,7 @@ def save_video(trial_path, fps):
     while not os.path.isfile(webcam_finished_flag):
         sleep(1e-2)
 
-    all_chunks = os.listdir(webcam_data_path)
-    all_chunks.sort()
-
-    webcam_data = []
-    for i in range(1, len(all_chunks)):
-        webcam_data.extend(load(os.path.join(webcam_data_path, '{}.jb'.format(i))))
-
-    frames = [data[1] for data in webcam_data]
+    frames = load_images(trial_path, 'webcam', numpy=False)
     write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
     logging.info("Finished saving video!")
 

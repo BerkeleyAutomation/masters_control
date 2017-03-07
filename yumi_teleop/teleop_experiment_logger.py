@@ -79,6 +79,8 @@ class TeleopExperimentLogger(ExperimentLogger):
         for data_streamer in data_streamers:
             if data_streamer.name == 'webcam':
                 data_streamer.save_data(trial_path, cb=save_video, concat=False)
+            elif data_streamer.name in ('primesense_depth', 'kinect_depth'):
+                data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name), concat=False)
             else:
                 data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name))
 

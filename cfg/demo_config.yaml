@@ -7,7 +7,7 @@ z: fine
 
 # data collection
 record: True
-supervisor: Jacky
+supervisor: Tests
 fps: 10
 save_every: 50
 cache_path: /mnt/hdd/data/.cache
@@ -18,13 +18,21 @@ data_srcs:
     use: True
     T_path: '/home/autolab/Public/alan/calib/webcam_overhead/webcam_overhead_to_world.tf'
     n: 0
-  kinect:
+  primesense:
     use: False
+    T_path: '/home/autolab/Public/alan/calib/primesense_overhead/primesense_overhead_to_world.tf'
+  kinect:
+    use: True
     T_path: '/home/autolab/Public/alan/calib/kinect2_overhead/kinect2_overhead_to_world.tf'
     n: 0
 display_demos:
-  - scissor_demo
-  - wire_demo
-  - zipper_demo
-  - rope_f_demo
-  - crane_demo
+  #- scissor_demo
+  #- wire_demo
+  #- zipper_demod
+  #- crane_demo
+  # - rope_demo
+  - rope_u_demo
+  # - marker_demo
+  - scoop_demo
+  # - rope_f_demo
+  - pipette_demo

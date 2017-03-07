@@ -14,7 +14,7 @@ from Queue import Empty
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState, YuMiControlException
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig
-from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor
+from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sensor, PrimesenseSensor
 
 from masters_control.srv import str_str, pose_str
 from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter, DemoWrapper
@@ -186,6 +186,10 @@ class YuMiTeleopHost:
                 self.webcam.stop()
             except Exception:
                 pass
+            try:
+                self.primesense.stop()
+            except Exception:
+                pass
             self.syncer.stop()
 
         return shutdown_hook
@@ -219,6 +223,20 @@ class YuMiTeleopHost:
             self.all_datas.append(self.datas['webcam'])
             self.save_file_paths.append(self.cfg['data_srcs']['webcam']['T_path'])
 
+        if self.cfg['data_srcs']['primesense']['use']:
+            def ps_gen():
+                ps_lst = []
+                def ps_depth_frames():
+                    if not ps_lst:
+                        ps_lst.append(PrimesenseSensor())
+                        ps_lst[0].start()
+                    return ps_lst[0].frames()[1]
+                return ps_depth_frames
+
+            self.datas['primesense_depth'] = DataStreamRecorder('primesense_depth', ps_gen(), cache_path=cache_path, save_every=save_every)
+            self.all_datas.append(self.datas['primesense_depth'])
+            self.save_file_paths.append(self.cfg['data_srcs']['primesense']['T_path'])
+
         if self.cfg['data_srcs']['kinect']['use']:
             def kinect_gen():
                 kinect = []
@@ -227,11 +245,11 @@ class YuMiTeleopHost:
                         kinect.append(Kinect2Sensor(device_num=self.cfg['data_srcs']['kinect']['n'],
                                                     packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL))
                         kinect[0].start()
-                    return kinect[0].frames()[:2]
+                    return kinect[0].frames()[1]
                 return kinect_frames
 
-            self.datas['kinect'] = DataStreamRecorder('kinect', kinect_gen(), cache_path=cache_path, save_every=save_every)
-            self.all_datas.append(self.datas['kinect'])
+            self.datas['kinect_depth'] = DataStreamRecorder('kinect_depth', kinect_gen(), cache_path=cache_path, save_every=save_every)
+            self.all_datas.append(self.datas['kinect_depth'])
             self.save_file_paths.append(self.cfg['data_srcs']['kinect']['T_path'])
 
         self.datas['poses'] = {
@@ -373,6 +391,7 @@ class YuMiTeleopHost:
         if msg.req == 'teleop_production':
             self._reset_masters_yumi_connector()
             if self._recording:
+                self.syncer.flush()
                 self.syncer.resume(reset_time=True)
             self._set_poller_forwards(True)
             rospy.loginfo("beginning teleop!")
