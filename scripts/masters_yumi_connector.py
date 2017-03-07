@@ -5,7 +5,7 @@ target poses for the YuMi.
 Meant to operate along yumi_teleop_client and yumi_teleop_host
 Author: Jacky Liang
 """
-import rospy
+import rospy, os
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose
 from time import time
@@ -13,6 +13,7 @@ from masters_control.srv import pose_str
 
 from core import RigidTransform
 from yumi_teleop import T_to_ros_pose, ros_pose_to_T
+from multiprocessing import Queue
 
 _T_MC_YCR = RigidTransform(rotation=[[0,-1,0],
                                         [1,0,0],
@@ -31,7 +32,7 @@ class MastersYuMiConnector:
         self._clutch_i = 0
 
         # masters reference poses
-        self.T_mz_cu_t = RigidTransform(from_frame=self._clutch('up'), to_frame='masters_zero')
+        self.T_mz_cu_t = None
         self.T_w_cu_t = None
         self.T_mzr_mz = None
         self.T_mc_mcr = None
@@ -66,9 +67,9 @@ class MastersYuMiConnector:
         rospy.loginfo("Waiting for first resest init pose...")
 
     def _reset_init_poses(self, yumi_pose):
-        rospy.loginfo("Reset Init Pose for {0}".format(self.pub_name))
-        self.has_zeroed = True
+        self.has_zeroed = False
 
+        self.T_mz_cu_t = RigidTransform(from_frame=self._clutch('up'), to_frame='masters_zero')
         self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
         self.T_mzr_mz = RigidTransform(rotation=self.T_w_cu_t.rotation,
                                         from_frame='masters_zero', to_frame='masters_zero_ref')
@@ -78,14 +79,14 @@ class MastersYuMiConnector:
         self.T_w_yi = yumi_pose.copy()
         self.T_yi_yir = RigidTransform(rotation=self.T_w_yi.inverse().rotation, from_frame='yumi_init_ref', to_frame='yumi_init')
         self.T_ycr_yc = RigidTransform(rotation=self.T_w_yi.rotation, from_frame='yumi_current', to_frame='yumi_current_ref')
-        rospy.loginfo("Done!")
+
+        self.has_zeroed = True
 
     def _clutch(self, state):
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
 
     def _position_cartesian_current_callback(self, ros_pose):
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
-
         if not self.has_zeroed:
             return
 
@@ -104,23 +105,23 @@ class MastersYuMiConnector:
         if not self.has_zeroed:
             return
 
-        cluch_down = msg.data
+        clutch_down = msg.data
 
-        if cluch_down:
+        if clutch_down:
             self._clutch_i += 1
             rospy.loginfo("Got clutch down: {0}".format(self._clutch_i))
             # clutch down
             self.T_w_cd_t1 = self.T_w_mc.as_frames(self._clutch('down'), 'world')
         else:
             # clutch up
-            rospy.loginfo("Updating cluch up for {0}".format(self._clutch_i))
+            rospy.loginfo("Updating clutch up for {0}".format(self._clutch_i))
             self.T_mz_cu_t = self.T_mz_cu_t * self.T_w_cu_t.inverse() * \
                                self.T_w_cd_t1 * RigidTransform(from_frame=self._clutch('up'), to_frame=self._clutch('down'))
 
-            # updating last known cluch up pose
+            # updating last known clutch up pose
             self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
 
-        self.clutch_state = cluch_down
+        self.clutch_state = clutch_down
 
     def shutdown(self):
         self.rel_pose_sub.unregister()

@@ -28,6 +28,18 @@ class IdentityFilter(MotionFilter):
     def reset(self):
         return
 
+class HeightFilter(MotionFilter):
+
+    def __init__(self, z):
+        self.z = z
+
+    def apply(self, pose):
+        pose.translation[2] = max(pose.translation[2], self.z)        
+        return pose
+
+    def reset(self):
+        return
+
 class ProjectionFilter(MotionFilter):
 
     def __init__(self):

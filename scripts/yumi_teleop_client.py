@@ -8,7 +8,7 @@ import rospy, cv2, argparse
 import numpy as np
 from multiprocessing import Process, Queue
 
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Float32
 from masters_control.srv import str_str
 from perception import OpenCVCameraSensor
 from core import YamlConfig
@@ -27,10 +27,16 @@ class UI(Process):
         self.res_q = Queue()
         self.cfg = cfg
         self.debug = self.cfg['debug']
-        self.cids = []
-        for id, use in self.cfg['cams'].items():
-            if use:
-                self.cids.append(id)
+        self.frame_cam_map = {
+              'left':{
+                  'cur': 0,
+                  'cams': ['left', 'side'],
+                },
+              'right':{
+                  'cur': 0,
+                  'cams': ['right']
+                }
+            }
 
     def gen_list_view(self, frame):
         overlay = frame.copy()
@@ -60,9 +66,9 @@ class UI(Process):
             self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
         else:
             self.cams = {}
-            for cid in self.cids:
-                self.cams[cid] = OpenCVCameraSensor(cid)
-                self.cams[cid].start()
+            for name in self.cfg['cams']:   
+                self.cams[name] = OpenCVCameraSensor(int(self.cfg['cams'][name]['cid']))
+                self.cams[name].start()
 
         self.left = cv2.namedWindow("left", cv2.cv.CV_WINDOW_NORMAL)
         self.right = cv2.namedWindow("right", cv2.cv.CV_WINDOW_NORMAL)
@@ -78,8 +84,14 @@ class UI(Process):
                 frame1 = self._black_frame.copy()
                 frame2 = self._black_frame.copy()
             else:
-                frame1 = self.cams[self.cids[0]].frames().raw_data
-                frame2 = self.cams[self.cids[1]].frames().raw_data
+                frame1_name = self.frame_cam_map['left']['cams'][self.frame_cam_map['left']['cur']]
+                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']] 
+                frame1 = self.cams[frame1_name].frames().raw_data
+                frame2 = self.cams[frame2_name].frames().raw_data
+                if self.cfg['cams'][frame1_name]['flip']:
+                    frame1 = np.rot90(np.rot90(frame1)).copy()
+                if self.cfg['cams'][frame2_name]['flip']:
+                    frame2 = np.rot90(np.rot90(frame2)).copy()
             pedals_io = {'down':False, 'overlay':False, 'select':False}
 
             if not self.req_q.empty():
@@ -116,6 +128,11 @@ class UI(Process):
                     self.list_view = []
                 if len(self.list_view) > 0:
                     self.list_index = self.list_index % len(self.list_view)
+            else:
+                if pressed == ord('s') or pedals_io['down']: # cycle right
+                    self.frame_cam_map['right']['cur'] = (self.frame_cam_map['right']['cur'] + 1) % len(self.frame_cam_map['right']['cams'])
+                elif pressed == ord('d') or pedals_io['select']: # cycle left cam
+                    self.frame_cam_map['left']['cur'] = (self.frame_cam_map['left']['cur'] + 1) % len(self.frame_cam_map['left']['cams'])
             if pressed == ord('a') or pedals_io['overlay']:
                 self.show_overlay = not self.show_overlay
 
@@ -131,6 +148,7 @@ class UI(Process):
         return self.res_q.get()
 
     def set_overlay(self, overlay):
+        print 'setting overlay to ', overlay
         self.req_q.put(("overlay", overlay))
 
     def stop(self):
@@ -142,27 +160,43 @@ class UI(Process):
 class YuMiTeleopClient:
 
     def __init__(self, cfg):
+        self.cfg = cfg
         rospy.init_node("yumi_teleop_client")
         rospy.loginfo("Init YuMiTeleopClient")
         rospy.loginfo("Waiting for host ui service...")
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
+        self.teleop_confirmation_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_confirmation_service', str_str))
         rospy.loginfo("UI Service established!")
 
         self.menu_main = ("Collect Demos", "Sandbox", "Quit")
         self.menu_pause_teleop = ("Pause", "Finish")
         self.menu_resume_teleop = ("Resume", "Finish")
+        self.menu_teleop_staging = ("Go!",)
         self.menu_demo = None
 
-        self.ui = UI(cfg)
+        self.ui = UI(self.cfg)
 
-        self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
-        self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
         self._select_sub = rospy.Subscriber('/dvrk/footpedals/camera', Bool, self._pedals_call_back_gen('select'))
         self._overlay_sub = rospy.Subscriber('/dvrk/footpedals/camera_plus', Bool, self._pedals_call_back_gen('overlay'))
         self._down_sub = rospy.Subscriber('/dvrk/footpedals/camera_minus', Bool, self._pedals_call_back_gen('down'))
         self._clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
         self._clutch_down = False
+        self.cur_state = None
+
+        self.last_gripper_widths = {
+              'right': None,
+              'left': None
+            }
+
+        if self.cfg['grippers'] == 'binary':
+            self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
+            self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
+        elif self.cfg['grippers'] == 'continuous':
+            self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_position_current', Float32, self._gripper_callback_gen('left'))
+            self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_position_current', Float32, self._gripper_callback_gen('right'))
+        else:
+            raise ValueError("Unknown gripper mode! Can only be binary or continuous, got {}".format(self.cfg['grippers']))
 
         rospy.on_shutdown(self._shutdown_hook_gen())
 
@@ -181,15 +215,22 @@ class YuMiTeleopClient:
         def callback(msg):
             is_down = msg.data
             if is_down:
-              pedals_io = {'overlay':False, 'down':False, 'select':False}
-              pedals_io[pedal] = True
-              self.ui.set_pedals(pedals_io)
+                pedals_io = {'overlay':False, 'down':False, 'select':False}
+                pedals_io[pedal] = True
+                self.ui.set_pedals(pedals_io)
         return callback
 
     def _gripper_callback_gen(self, arm_name):
-        def callback(gripper_closed):
+        def callback(gripper_ev):
             if self.cur_state == "teleop" and not self._clutch_down:
-                self.ui_service("gripper", "('{0}',{1})".format(arm_name, gripper_closed.data))
+
+                if self.cfg['grippers'] == 'continuous':
+                    if self.last_gripper_widths[arm_name] is None:
+                        self.last_gripper_widths[arm_name] = gripper_ev.data
+                    if abs(gripper_ev.data - self.last_gripper_widths[arm_name]) < 0.1:
+                        return
+
+                self.ui_service("gripper", "('{0}','{1}', {2})".format(arm_name, self.cfg['grippers'], gripper_ev.data))
         return callback
 
     def _clutch_callback(self, msg):
@@ -209,6 +250,8 @@ class YuMiTeleopClient:
 
             # calls transition
             transition = getattr(self, "t_{0}".format(self.cur_state))
+            print "calling transtion on t_{}".format(self.cur_state)
+
             self.cur_state, self.cur_menu, overlay = transition(ui_input)
             self.ui.set_overlay(overlay)
 
@@ -216,20 +259,25 @@ class YuMiTeleopClient:
                 break
         self.ui.stop()
 
+    def t_teleop_staging(self, ui_input):
+        if ui_input == "Go!":
+            _ = self.ui_service("teleop_production",)
+            return "teleop", self.menu_pause_teleop, False        
+
     def t_standby(self, ui_input):
         if ui_input == "Collect Demos":
             return "demo_selection", self.menu_demo, True
         elif ui_input == "Sandbox":
-            res = self.ui_service("teleop_start")
-            return "teleop", self.menu_pause_teleop, False
+            _ = self.ui_service("teleop_start",)
+            return "teleop_staging", self.menu_teleop_staging, True
         elif ui_input == "Quit":
             return "exit", None, None
 
     def t_demo_selection(self, ui_input):
         if ui_input == "Back":
             return "standby", self.menu_main, True
-        res = self.ui_service("choose_demo", ui_input)
-        return "teleop", self.menu_pause_teleop, False
+        _ = self.ui_service("choose_demo", ui_input)
+        return "teleop_staging", self.menu_teleop_staging, True
 
     def t_teleop(self, ui_input):
         if ui_input == "Pause":

@@ -2,16 +2,20 @@
 Experiment Logger class for teleop demonstrations
 Author: Jacky Liang
 """
-from core import ExperimentLogger, CSVModel
 import os, cv2, logging
-from joblib import load
-from perception import write_video
+from time import sleep, time
+import requests
+from core import ExperimentLogger, CSVModel
+from constants import VIDEO_SERVICE_PORT
 
 class TeleopExperimentLogger(ExperimentLogger):
 
     RECORDS_HEADERS_TYPES = [
             ('experiment_id','str'),
             ('demo_name','str'),
+            ('demo_time','float'),
+            ('success','bool'),
+            ('comments', 'str'),
             ('supervisor', 'str'),
             ('trial_num', 'int'),
             ('trial_path','str'),
@@ -43,7 +47,7 @@ class TeleopExperimentLogger(ExperimentLogger):
                 'supervisor': self.supervisor
                 }
 
-    def save_demo_data(self, demo_name, supervisor, save_file_paths, data_streamers, fps):
+    def save_demo_data(self, demo_name, demo_time, success, supervisor, save_file_paths, data_streamers, fps, comments=''):
         last_demo_record = self._demo_records_model.get_by_cols({
                                                                 'demo_name': demo_name,
                                                                 'supervisor': supervisor
@@ -66,24 +70,27 @@ class TeleopExperimentLogger(ExperimentLogger):
 
         # callback to save video
         def save_video():
-            webcam_data_path = os.path.join(trial_path, 'webcam.jb')
-            while not os.path.isfile(webcam_data_path):
-                sleep(1e-2)
-            webcam_data = load(webcam_data_path)
-            frames = [data[1] for data in webcam_data]
-            write_video(frames, os.path.join(trial_path, 'webcam.avi'), fps=fps)
+            _ = requests.get("http://localhost:{0}/render_video?trial_path={1}&fps={2}".format(VIDEO_SERVICE_PORT, trial_path, fps))
+            logging.info("Finished sending request to render video.")
 
         # saving all data
+        def notify_complete(name):
+            return lambda : logging.info("Finished saving {0}".format(name))
         for data_streamer in data_streamers:
             if data_streamer.name == 'webcam':
-                data_streamer.save_data(trial_path, cb=save_video)
+                data_streamer.save_data(trial_path, cb=save_video, concat=False)
+            elif data_streamer.name in ('primesense_depth', 'kinect_depth'):
+                data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name), concat=False)
             else:
-                data_streamer.save_data(trial_path)
+                data_streamer.save_data(trial_path, cb=notify_complete(data_streamer.name))
 
         self._demo_records_model.insert({
             'experiment_id': self.id,
             'demo_name': demo_name,
+            'demo_time': demo_time,
+            'success': success,
             'supervisor': supervisor,
             'trial_num': trial_num,
             'trial_path': trial_path,
+            'comments': comments,
         })

@@ -1,5 +1,5 @@
 # config file for yumi_teleop_host
-debug: True
+debug: False
 
 # robot controls
 v: 1500
@@ -7,18 +7,32 @@ z: fine
 
 # data collection
 record: True
-supervisor: Jacky
+supervisor: Tests
 fps: 10
 save_every: 50
-cache_path: /mnt/hdd/data/yumi_teleop/.cache
+cache_path: /mnt/hdd/data/.cache
 demo_path: /mnt/hdd/data/experiment_demos/
-output_path: /mnt/hdd/data/yumi_teleop/results
+output_path: /mnt/hdd/data/yumi_teleop/ #/mnt/hdd/data/yumi_teleop/, /mnt/hdd/data/yumi_kinesthetics
 data_srcs:
   webcam:
-    use: False
+    use: True
     T_path: '/home/autolab/Public/alan/calib/webcam_overhead/webcam_overhead_to_world.tf'
     n: 0
-  kinect:
+  primesense:
     use: False
+    T_path: '/home/autolab/Public/alan/calib/primesense_overhead/primesense_overhead_to_world.tf'
+  kinect:
+    use: True
     T_path: '/home/autolab/Public/alan/calib/kinect2_overhead/kinect2_overhead_to_world.tf'
     n: 0
+display_demos:
+  #- scissor_demo
+  #- wire_demo
+  #- zipper_demod
+  #- crane_demo
+  # - rope_demo
+  - rope_u_demo
+  # - marker_demo
+  - scoop_demo
+  # - rope_f_demo
+  - pipette_demo

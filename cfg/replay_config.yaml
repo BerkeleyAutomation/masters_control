@@ -6,8 +6,13 @@ z: z100
 mode: 'states' # can also be poses
 
 # playback settings
-target_fps: 20
 subsample: 1
 
 # data settings
-data_path: /mnt/hdd/data/yumi_flexpendant/ #/mnt/hdd/data/yumi_teleop/, /mnt/hdd/data/yumi_kinesthetics
+data_path: /mnt/hdd/data/yumi_kinesthetics/ #/mnt/hdd/data/yumi_teleop/, /mnt/hdd/data/yumi_flexpendant
+cache_path: /mnt/hdd/data/.cache/
+save_every: 50
+
+# debug settings
+record_torque:
+  use: True
