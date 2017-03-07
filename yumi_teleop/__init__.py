@@ -9,6 +9,7 @@ from teleop_experiment_logger import TeleopExperimentLogger
 from util import ros_pose_to_T, T_to_ros_pose, str_str_service_wrapper
 from sequence import Sequence
 from constants import VIDEO_SERVICE_PORT
+from data_loader import load_records, load_poses, load_joints, load_webcam, load_primesense
 
 __all__ = ['load_demo_class',
             'DemoWrapper',
@@ -18,4 +19,5 @@ __all__ = ['load_demo_class',
             'ros_pose_to_T', 'T_to_ros_pose', 'str_str_service_wrapper',
             'Sequence',
             'VIDEO_SERVICE_PORT'
+            'load_records', 'load_poses', 'load_joints', 'load_webcam', 'load_primesense'
             ]
