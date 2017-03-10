@@ -61,8 +61,8 @@ def load_images(trial_path, device, numpy=True):
     '''
     load n by h by w by (3, 1) (3 if webcam, 1 if depth) array
     '''
-    if device not in ('webcam', 'kinect_depth', 'primesense_depth'):
-        raise ValueError("Can only accept devices: webcam, kinect_depth, or primesense_depth. Got {}".format(device))
+    if device not in ('webcam', 'kinect_depth', 'primesense_depth', 'kinect_color'):
+        raise ValueError("Can only accept devices: webcam, kinect_depth, kinect_color, or primesense_depth. Got {}".format(device))
     data_path = os.path.join(trial_path, device)
     data = concat_chunks(data_path)
 
