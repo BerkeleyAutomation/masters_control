@@ -230,7 +230,7 @@ class YuMiTeleopHost:
                     if not ps_lst:
                         ps_lst.append(PrimesenseSensor())
                         ps_lst[0].start()
-                    return ps_lst[0].frames()[1]
+                    return ps_lst[0].frames()[0]
                 return ps_depth_frames
 
             self.datas['primesense_depth'] = DataStreamRecorder('primesense_depth', ps_gen(), cache_path=cache_path, save_every=save_every)
@@ -245,11 +245,11 @@ class YuMiTeleopHost:
                         kinect.append(Kinect2Sensor(device_num=self.cfg['data_srcs']['kinect']['n'],
                                                     packet_pipeline_mode=Kinect2PacketPipelineMode.OPENGL))
                         kinect[0].start()
-                    return kinect[0].frames()[1]
+                    return kinect[0].frames()[0]
                 return kinect_frames
 
-            self.datas['kinect_depth'] = DataStreamRecorder('kinect_depth', kinect_gen(), cache_path=cache_path, save_every=save_every)
-            self.all_datas.append(self.datas['kinect_depth'])
+            self.datas['kinect_color'] = DataStreamRecorder('kinect_color', kinect_gen(), cache_path=cache_path, save_every=save_every)
+            self.all_datas.append(self.datas['kinect_color'])
             self.save_file_paths.append(self.cfg['data_srcs']['kinect']['T_path'])
 
         self.datas['poses'] = {
@@ -392,6 +392,7 @@ class YuMiTeleopHost:
             self._reset_masters_yumi_connector()
             if self._recording:
                 self.syncer.flush()
+                self.ysub.flush()
                 self.syncer.resume(reset_time=True)
             self._set_poller_forwards(True)
             rospy.loginfo("beginning teleop!")
