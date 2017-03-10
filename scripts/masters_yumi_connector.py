@@ -73,10 +73,16 @@ class MastersYuMiConnector:
     def _update_cb_objs(self):
         if self.cb_prop_q.qsize() > 0:
             for key, val in self.cb_prop_q.get().items():
+                if key == 'has_zeroed':
+                    rospy.loginfo("{} setting zero to {} at {}".format(self.pub_name, val, time() - START_TIME))
                 setattr(self, key, val)
 
     def _reset_init_poses(self, yumi_pose):
         rospy.loginfo("Reset Init Pose for {} at {}".format(self.pub_name, time() - START_TIME))
+        rospy.loginfo('Received yumi pose for {} is {}'.format(self.pub_name, yumi_pose.translation))
+        self.cb_prop_q.put({
+            'has_zeroed': False
+        })
 
         self.T_mz_cu_t = RigidTransform(from_frame=self._clutch('up'), to_frame='masters_zero')
         self.T_w_cu_t = self.T_w_mc.as_frames(self._clutch('up'), 'world')
@@ -98,6 +104,10 @@ class MastersYuMiConnector:
             'T_ycr_yc': self.T_ycr_yc
         })
 
+        self.cb_prop_q.put({
+            'has_zeroed': True
+        })
+
         rospy.loginfo("Done Init Pose for {} at {}".format(self.pub_name, time() - START_TIME))
 
     def _clutch(self, state):
@@ -108,8 +118,6 @@ class MastersYuMiConnector:
         self._update_cb_objs()
         if not self.has_zeroed:
             return
-
-        rospy.loginfo("Forwarding pose for {} at {}".format(self.pub_name, time() - START_TIME))
 
         # only update YuMi if clutch is not pressed
         if not self.clutch_state:
