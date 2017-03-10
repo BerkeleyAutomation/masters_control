@@ -71,14 +71,9 @@ class _YuMiArmPoller(Process):
                             method = getattr(self.y, method_name)
                         elif cmd[1] == 'single':
                             method = getattr(self.arm, method_name)
-                        print 'calling {} on {}'.format(method_name, self.arm_name)
                         retval = method(*args, **kwargs)
-                        print 'done calling {} on {}'.format(method_name, self.arm_name)
                         while self.ret_q.qsize() > 0:
-                            print 'ret q non empty in thread', method_name, self.arm_name
-                            old_ret = self.ret_q.get_nowait()
-                            print 'flushing ret q', self.arm_name, old_ret, self.ret_q.qsize()
-                        print 'giving ret ', self.arm_name, retval, self.ret_q.qsize()
+                            self.ret_q.get_nowait()
                         self.ret_q.put(retval)
                 elif self.forward_poses and not self.pose_q.empty():
                     try:
@@ -347,7 +342,6 @@ class YuMiTeleopHost:
 
     def _reset_masters_yumi_connector(self):
         if not self.cfg['debug']:
-            print 'calling reset pollers'
             self._call_single_poller('left', 'get_pose')
             self._call_single_poller('right', 'get_pose')
             left_pose, right_pose = None, None
@@ -355,8 +349,6 @@ class YuMiTeleopHost:
                 left_pose = self.qs['ret']['left'].get(block=True)
             while not isinstance(right_pose, RigidTransform):
                 right_pose = self.qs['ret']['right'].get(block=True)
-
-            print 'got left', left_pose
 
             left_ros_pose = T_to_ros_pose(left_pose)
             right_ros_pose = T_to_ros_pose(right_pose)
@@ -373,9 +365,7 @@ class YuMiTeleopHost:
     def _call_single_poller(self, arm_name, method_name, *args, **kwargs):
         ret_q = self.qs['ret'][arm_name]
         while ret_q.qsize() > 0:
-            print 'ret q is non empty', arm_name, method_name
             ret_q.get_nowait()
-        print 'going to pollers', arm_name, method_name
         self.pollers[arm_name].send_cmd(('method', 'single', method_name, {'args':args, 'kwargs':kwargs}))
 
     def _teleop_begin(self, demo_name=None):
