@@ -2,13 +2,10 @@
 
 debug: False
 cams:
-  'left': 
+  'left':
+    'cid': 0
+    'flip': True
+  'right':
     'cid': 1
     'flip': True
-  'right': 
-    'cid': 2
-    'flip': True
-  'side': 
-    'cid': 0 
-    'flip': False
-grippers: 'continuous' # either binary or continuous
+grippers: 'binary' # either binary or continuous

@@ -30,7 +30,7 @@ class UI(Process):
         self.frame_cam_map = {
               'left':{
                   'cur': 0,
-                  'cams': ['left', 'side'],
+                  'cams': ['left']#, 'side'],
                 },
               'right':{
                   'cur': 0,
@@ -66,7 +66,7 @@ class UI(Process):
             self._black_frame = np.dstack([np.zeros((480,640))*0.1]*3)
         else:
             self.cams = {}
-            for name in self.cfg['cams']:   
+            for name in self.cfg['cams']:
                 self.cams[name] = OpenCVCameraSensor(int(self.cfg['cams'][name]['cid']))
                 self.cams[name].start()
 
@@ -85,7 +85,7 @@ class UI(Process):
                 frame2 = self._black_frame.copy()
             else:
                 frame1_name = self.frame_cam_map['left']['cams'][self.frame_cam_map['left']['cur']]
-                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']] 
+                frame2_name = self.frame_cam_map['right']['cams'][self.frame_cam_map['right']['cur']]
                 frame1 = self.cams[frame1_name].frames().raw_data
                 frame2 = self.cams[frame2_name].frames().raw_data
                 if self.cfg['cams'][frame1_name]['flip']:
@@ -166,11 +166,10 @@ class YuMiTeleopClient:
         rospy.loginfo("Waiting for host ui service...")
         rospy.wait_for_service('yumi_teleop_host_ui_service')
         self.ui_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_host_ui_service', str_str))
-        self.teleop_confirmation_service = str_str_service_wrapper(rospy.ServiceProxy('yumi_teleop_confirmation_service', str_str))
         rospy.loginfo("UI Service established!")
 
         self.menu_main = ("Collect Demos", "Sandbox", "Quit")
-        self.menu_pause_teleop = ("Pause", "Finish")
+        self.menu_pause_teleop = ("Finish", "Pause")
         self.menu_resume_teleop = ("Resume", "Finish")
         self.menu_teleop_staging = ("Go!",)
         self.menu_demo = None
@@ -262,7 +261,7 @@ class YuMiTeleopClient:
     def t_teleop_staging(self, ui_input):
         if ui_input == "Go!":
             _ = self.ui_service("teleop_production",)
-            return "teleop", self.menu_pause_teleop, False        
+            return "teleop", self.menu_pause_teleop, False
 
     def t_standby(self, ui_input):
         if ui_input == "Collect Demos":
