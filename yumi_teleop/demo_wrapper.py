@@ -9,16 +9,18 @@ _NULL = lambda *args, **kwars: None
 
 class _PseudoYuMiArm:
 
-    def __init__(self, arm_name, single_poller, sub_arm):
+    def __init__(self, arm_name, single_poller, ret_q):
         self._arm_name = arm_name
         self._call_single_poller = single_poller
-        self._sub_arm = sub_arm
+        self._ret_q = ret_q
 
     def get_state(self):
-        return sub_arm.get_state()
+        self._call_single_poller(self._arm_name, 'get_state')
+        return self._ret_q.get(block=True)
 
     def get_pose(self):
-        return sub_arm.get_pose()
+        self._call_single_poller(self._arm_name, 'get_pose')
+        return self._ret_q.get(block=True)
 
     def goto_state(self, state):
         self._call_single_poller(self._arm_name, 'goto_state', state)
@@ -37,10 +39,10 @@ class _PseudoYuMiArm:
 
 class _PseudoYuMiRobot:
 
-    def __init__(self, both_poller, single_poller, sub):
+    def __init__(self, both_poller, single_poller, left_ret_q, right_ret_q):
         self._call_both_poller = both_poller
-        self.left = _PseudoYuMiArm('left', single_poller, sub.left)
-        self.right = _PseudoYuMiArm('right', single_poller, sub.right)
+        self.left = _PseudoYuMiArm('left', single_poller, left_ret_q)
+        self.right = _PseudoYuMiArm('right', single_poller, right_ret_q)
 
     def open_grippers(self):
         self._call_both_poller('open_grippers')
@@ -63,7 +65,7 @@ class DemoWrapper:
 
     def __init__(self, robot, set_filter):
         if isinstance(robot, dict):
-            self.yumi = _PseudoYuMiRobot(robot['both_poller'], robot['single_poller'], robot['sub'])
+            self.yumi = _PseudoYuMiRobot(robot['both_poller'], robot['single_poller'], robot['left_ret_q'], robot['right_ret_q'])
         else:
             self.yumi = robot
 
