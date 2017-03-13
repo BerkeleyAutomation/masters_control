@@ -4,6 +4,7 @@ Author: Jacky Liang
 '''
 
 VIDEO_SERVICE_PORT = 1050
+GRIPPER_HOLD_WIDTH = 0.0015
 MASTERS_GRIPPER_WIDTHS = {
     'left': {
         'min': -1.01,

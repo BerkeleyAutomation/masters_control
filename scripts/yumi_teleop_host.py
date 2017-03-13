@@ -10,6 +10,7 @@ from geometry_msgs.msg import Pose
 from std_msgs.msg import String
 from time import sleep, time
 from Queue import Empty
+import sys
 
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState, YuMiControlException
 from yumipy import YuMiConstants as ymc
@@ -18,7 +19,7 @@ from perception import OpenCVCameraSensor, Kinect2PacketPipelineMode, Kinect2Sen
 
 from masters_control.srv import str_str, pose_str
 from yumi_teleop import QueueEventsSub, TeleopExperimentLogger, T_to_ros_pose, ros_pose_to_T, IdentityFilter, DemoWrapper
-from yumi_teleop.constants import MASTERS_GRIPPER_WIDTHS
+from yumi_teleop.constants import MASTERS_GRIPPER_WIDTHS, GRIPPER_HOLD_WIDTH
 import IPython
 
 _L_SUB = "/yumi/l"
@@ -40,6 +41,7 @@ class _YuMiArmPoller(Process):
         self.filter = IdentityFilter()
 
     def run(self):
+        self.move_counter = 0
         if self.arm_name == "left":
             self.y = YuMiRobot(include_right=False)
             self.arm = self.y.left
@@ -59,10 +61,15 @@ class _YuMiArmPoller(Process):
                             self.filter.reset()
                             self.y.set_v(self.v)
                             self.y.set_z(self.z)
+                            self.move_counter = 0
                     elif cmd[0] == 'stop':
                         break
                     elif cmd[0] == 'filter':
                         self.filter = cmd[1]
+                    elif cmd[0] == 'count':
+                        while self.ret_q.qsize() > 0:
+                            self.ret_q.get_nowait()
+                        self.ret_q.put(self.move_counter)
                     elif cmd[0] == 'method':
                         args = cmd[3]['args']
                         kwargs = cmd[3]['kwargs']
@@ -74,8 +81,10 @@ class _YuMiArmPoller(Process):
                         retval = method(*args, **kwargs)
                         while self.ret_q.qsize() > 0:
                             self.ret_q.get_nowait()
-                        self.ret_q.put(retval)
+                        if retval is not None:
+                            self.ret_q.put(retval)
                 elif self.forward_poses and not self.pose_q.empty():
+                    self.move_counter += 1
                     try:
                         pose = self.pose_q.get()
                         filtered_pose = self.filter.apply(pose)
@@ -356,7 +365,10 @@ class YuMiTeleopHost:
             self.init_pose_service(left=left_ros_pose, right=right_ros_pose)
             for q in self.qs['poses'].values():
                 if q.qsize() > 0:
-                    q.get_nowait()
+                    try:
+                        q.get_nowait()
+                    except Empty:
+                        pass
 
     def _call_both_poller(self, method_name, *args, **kwargs):
         for poller in self.pollers.values():
@@ -393,9 +405,10 @@ class YuMiTeleopHost:
 
     def _teleop_finish(self):
         self._set_poller_forwards(False)
+        cur_time = time()
         if self._recording:
             self.syncer.pause()
-            demo_time = time() - self._cur_demo_start_time
+            demo_time = cur_time - self._cur_demo_start_time
             self._demos[self._recording_demo_name]['obj'].takedown()
             self._recording = False
         self._call_both_poller('reset_home')
@@ -418,6 +431,19 @@ class YuMiTeleopHost:
                                         self.cfg['fps'],
                                         comments = c
                                         )
+        else:
+            dur = cur_time - self.sandbox_start_time
+            sleep(0.5)
+            for poller in self.pollers.values():
+                poller.send_cmd(('count',))
+            sleep(0.5)
+            print 'getting ret'
+            left_count = self.qs['ret']['left'].get(block=True)
+            right_count = self.qs['ret']['right'].get(block=True)
+
+            print 'duration: {}s'.format(dur)
+            print 'counts left {} right {}'.format(left_count, right_count)
+            print 'hz left {} right {}'.format(left_count/dur, right_count/dur)
 
     def t_teleop_staging(self, msg):
         if msg.req == 'teleop_production':
@@ -432,6 +458,7 @@ class YuMiTeleopHost:
                 self._cur_demo_start_time = time()
             else:
                 self.cur_state = "teleop"
+                self.sandbox_start_time = time()
         return "ok"
 
     def t_standby(self, msg):
@@ -532,8 +559,8 @@ class YuMiTeleopHost:
                     self._call_single_poller(arm_name, 'open_gripper')
                     self.grippers_evs[arm_name].put_event('open_gripper')
                 elif cur_name == 'hold':
-                    self._call_single_poller(arm_name, 'move_gripper', 0.005, wait_for_res=False)
-                    self.grippers_evs[arm_name].put_event(['move_gripper', 0.005])
+                    self._call_single_poller(arm_name, 'move_gripper', GRIPPER_HOLD_WIDTH, wait_for_res=False)
+                    self.grippers_evs[arm_name].put_event(['move_gripper', GRIPPER_HOLD_WIDTH])
                 elif cur_name == 'squeeze' and last_name == 'close':
                     width = cur_state[1]
                     self._call_single_poller(arm_name, 'move_gripper', width, wait_for_res=False)
