@@ -24,7 +24,7 @@ def load_registration_tf(trial_path, device):
         raise ValueError("Can only accept webcam or primesense. Got {}".format(device))
     return RigidTransform.load(os.path.join(trial_path, '{}_overhead_to_world.tf'.format(device)))
 
-def prune(lst, trial):
+def prune_data(lst, trial):
     try:
         prune = eval(trial['comments']) #TODO THIS IS VERY HACKY
     except Exception:
@@ -37,7 +37,7 @@ def prune(lst, trial):
 
     return lst[lo:hi+1]
 
-def load_poses(trial, arm_name, euler=True):
+def load_poses(trial, arm_name, prune=True, subsample=1, euler=True):
     '''
     Returns n by 6 numpy array. n is # of time steps.
     the first 3 cols are x-y-z translation, last 3 are sxyz euler angles
@@ -46,8 +46,11 @@ def load_poses(trial, arm_name, euler=True):
         raise ValueError("Arm name can only be left or right. Got {}".format(arm_name))
     trial_path = trial['trial_path']
     poses_raw = load(os.path.join(trial_path, 'poses_{}.jb'.format(arm_name)))
-    poses_raw = prune(poses_raw, trial)
+    if prune:
+        poses_raw = prune_data(poses_raw, trial)
     poses = [x[1][1] for x in poses_raw]
+    if subsample > 1:
+        poses = poses[::subsample]
     if not euler:
         return poses
     poses_lst = [np.r_[p.translation, p.quaternion] for p in poses]
@@ -61,7 +64,7 @@ def load_joints(trial, arm_name):
         raise ValueError("Arm name can only be left or right. Got {}".format(arm_name))
     trial_path = trial['trial_path']
     states_raw = load(os.path.join(trial_path, 'states_{}.jb'.format(arm_name)))
-    states_raw = prune(states_raw, trial)
+    states_raw = prune_data(states_raw, trial)
     states = [x[1][1] for x in states_raw]
     joints_lst = [s.joints for s in states]
     return np.array(joints_lst)
@@ -76,17 +79,25 @@ def concat_chunks(path):
 
     return data
 
-def load_images(trial, device, numpy=True):
+def load_images(trial, device, prune=True, subsample=1, numpy=True):
     '''
     load n by h by w by (3, 1) (3 if webcam, 1 if depth) array
     '''
     if device not in ('webcam', 'kinect_depth', 'primesense_depth', 'kinect_color'):
         raise ValueError("Can only accept devices: webcam, kinect_depth, kinect_color, or primesense_depth. Got {}".format(device))
-    trial_path = trial['trial_path']
+    if isinstance(trial, str):
+        trial_path = trial
+    else:
+        trial_path = trial['trial_path']
     data_path = os.path.join(trial_path, device)
     data = concat_chunks(data_path)
 
-    data = prune(data, trial)
+    if not isinstance(trial, str):
+        if prune:
+            data = prune_data(data, trial)
+
+    if subsample > 1:
+        data = data[::subsample]
 
     frames = [x[1].data for x in data]
     if numpy:
