@@ -11,7 +11,7 @@ from std_msgs.msg import String
 from time import sleep, time
 from Queue import Empty
 import sys
-
+import numpy as np
 from yumipy import YuMiRobot, YuMiSubscriber, YuMiState, YuMiControlException
 from yumipy import YuMiConstants as ymc
 from core import DataStreamRecorder, DataStreamSyncer, YamlConfig, RigidTransform
@@ -39,6 +39,8 @@ class _YuMiArmPoller(Process):
 
         self.forward_poses = False
         self.filter = IdentityFilter()
+        self.filter_times = []
+        self.cmd_times = []
 
     def run(self):
         self.move_counter = 0
@@ -86,10 +88,16 @@ class _YuMiArmPoller(Process):
                 elif self.forward_poses and not self.pose_q.empty():
                     self.move_counter += 1
                     try:
+                        # start = time()
                         pose = self.pose_q.get()
                         filtered_pose = self.filter.apply(pose)
+                        # self.filter_times.append(time() - start)
+                        # print '{} filter time is {}'.format(self.arm_name, np.mean(self.filter_times))
                         try:
+                            # start = time()
                             res = self.arm.goto_pose(filtered_pose, relative=True)
+                            # self.cmd_times.append(time() - start)
+                            # print '{} cmd time is {}'.format(self.arm_name, np.mean(self.cmd_times))
                         except YuMiControlException:
                             logging.warn("Pose unreachable!")
                     except Empty:
@@ -432,18 +440,18 @@ class YuMiTeleopHost:
                                         comments = c
                                         )
         else:
-            dur = cur_time - self.sandbox_start_time
+            # dur = cur_time - self.sandbox_start_time
             sleep(0.5)
             for poller in self.pollers.values():
                 poller.send_cmd(('count',))
             sleep(0.5)
-            print 'getting ret'
-            left_count = self.qs['ret']['left'].get(block=True)
-            right_count = self.qs['ret']['right'].get(block=True)
+            # print 'getting ret'
+            # left_count = self.qs['ret']['left'].get(block=True)
+            # right_count = self.qs['ret']['right'].get(block=True)
 
-            print 'duration: {}s'.format(dur)
-            print 'counts left {} right {}'.format(left_count, right_count)
-            print 'hz left {} right {}'.format(left_count/dur, right_count/dur)
+            # print 'duration: {}s'.format(dur)
+            # print 'counts left {} right {}'.format(left_count, right_count)
+            # print 'hz left {} right {}'.format(left_count/dur, right_count/dur)
 
     def t_teleop_staging(self, msg):
         if msg.req == 'teleop_production':

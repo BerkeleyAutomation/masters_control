@@ -10,7 +10,7 @@ from std_msgs.msg import Bool
 from geometry_msgs.msg import Pose
 from time import time
 from masters_control.srv import pose_str
-
+import numpy as np
 from core import RigidTransform
 from yumi_teleop import T_to_ros_pose, ros_pose_to_T
 from multiprocessing import Queue
@@ -69,6 +69,7 @@ class MastersYuMiConnector:
         self.clutch_sub = rospy.Subscriber('/dvrk/footpedals/clutch', Bool, self._clutch_callback)
 
         rospy.loginfo("Waiting for first resest init pose...")
+        self.times = []
 
     def _update_cb_objs(self):
         if self.cb_prop_q.qsize() > 0:
@@ -114,6 +115,7 @@ class MastersYuMiConnector:
         return 'clutch_{0}_{1}'.format(state, self._clutch_i)
 
     def _position_cartesian_current_callback(self, ros_pose):
+        # start = time()
         self.T_w_mc = ros_pose_to_T(ros_pose, 'masters_current', 'world')
         self._update_cb_objs()
         if not self.has_zeroed:
@@ -129,6 +131,8 @@ class MastersYuMiConnector:
             T_w_yc = self.T_w_yi * self.T_yi_yir * T_yir_ycr * self.T_ycr_yc
 
             self.pub.publish(T_to_ros_pose(T_w_yc))
+            # self.times.append(time() - start)
+            # rospy.loginfo("Average forwarding time is {}".format(np.mean(self.times)))
 
     def _clutch_callback(self, msg):
         if not self.has_zeroed:
