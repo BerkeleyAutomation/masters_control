@@ -69,9 +69,15 @@ def load_joints(trial, arm_name):
     joints_lst = [s.joints for s in states]
     return np.array(joints_lst)
 
+def jb_number(name):
+    try:
+        return int(name[:name.index('.jb')])
+    except Exception:
+        return float('inf')
+
 def concat_chunks(path):
     all_chunks = os.listdir(path)
-    all_chunks.sort()
+    all_chunks.sort(key=jb_number)
     data = []
     for chunk in all_chunks:
         if chunk != '.finished':
