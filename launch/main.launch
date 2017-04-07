@@ -1,6 +1,0 @@
-<launch>
-
-	<node pkg="masters_control" name="transforms" type="broadcaster.py"></node>
-	<node pkg="masters_control" name="subs" type="masters_subscribers.py"></node>
-
-</launch>
