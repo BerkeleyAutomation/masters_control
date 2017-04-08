@@ -12,7 +12,8 @@ from std_msgs.msg import Bool, Float32
 from masters_control.srv import str_str
 from perception import OpenCVCameraSensor
 from core import YamlConfig
-
+import numpy as np
+from time import time, sleep
 from yumi_teleop import str_str_service_wrapper
 
 class UI(Process):
@@ -37,6 +38,7 @@ class UI(Process):
                   'cams': ['right']
                 }
             }
+        self.display_times = []
 
     def gen_list_view(self, frame):
         overlay = frame.copy()
@@ -80,6 +82,7 @@ class UI(Process):
         self.show_overlay = True
 
         while True:
+            start = time()
             if self.debug:
                 frame1 = self._black_frame.copy()
                 frame2 = self._black_frame.copy()
@@ -116,6 +119,8 @@ class UI(Process):
             cv2.imshow('right', frame2)
             cv2.imshow('debug_left', frame1)
             cv2.imshow('debug_right', frame2)
+            # self.display_times.append(time() - start)
+            # print 'mean display time is {}'.format(np.mean(self.display_times))
 
             pressed = cv2.waitKey(1) & 0xFF
             if self.show_overlay:
@@ -188,22 +193,26 @@ class YuMiTeleopClient:
               'left': None
             }
 
+        gripper_mode = self.cfg['grippers']
+        if gripper_mode not in ('continuous', 'binary', 'none'):
+            raise ValueError("Unknown gripper mode! Can only be none, binary or continuous, got {}".format(self.cfg['grippers']))
         if self.cfg['grippers'] == 'binary':
             self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_closed_event', Bool, self._gripper_callback_gen('left'))
             self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_closed_event', Bool, self._gripper_callback_gen('right'))
         elif self.cfg['grippers'] == 'continuous':
             self._l_gripper_sub = rospy.Subscriber('/dvrk/MTML/gripper_position_current', Float32, self._gripper_callback_gen('left'))
             self._r_gripper_sub = rospy.Subscriber('/dvrk/MTMR/gripper_position_current', Float32, self._gripper_callback_gen('right'))
-        else:
-            raise ValueError("Unknown gripper mode! Can only be binary or continuous, got {}".format(self.cfg['grippers']))
 
         rospy.on_shutdown(self._shutdown_hook_gen())
 
     def _shutdown_hook_gen(self):
         def shutdown_hook():
             self.ui.stop()
-            self._l_gripper_sub.unregister()
-            self._r_gripper_sub.unregister()
+            try:
+                self._l_gripper_sub.unregister()
+                self._r_gripper_sub.unregister()
+            except Exception:
+                pass
             self._select_sub.unregister()
             self._overlay_sub.unregister()
             self._down_sub.unregister()
